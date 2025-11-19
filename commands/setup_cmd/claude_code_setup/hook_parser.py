@@ -4,13 +4,14 @@ import json
 import os
 from typing import Dict, List, Optional, Any
 from pathlib import Path
+from cli_context import CLIContext, ClaudeScope
 
 
 class HookParser:
     """
     A class to manage Claude Code hooks configuration.
 
-    Handles reading, writing, and modifying hooks in the Claude hooks.json format:
+    Handles reading, writing, and modifying hooks in Claude settings.json format:
     {
       "hooks": {
         "EventName": [
@@ -26,49 +27,65 @@ class HookParser:
         ]
       }
     }
+
+    Supports three scopes:
+    - USER: ~/.claude/settings.json (global)
+    - PROJECT: <repo>/.claude/settings.json (shared with team)
+    - LOCAL: <repo>/.claude/settings.local.json (personal, not committed)
     """
 
-    def __init__(self, hooks_file_path: Optional[str] = None):
+    def __init__(self, hooks_file_path: Optional[str] = None,
+                 context: Optional[CLIContext] = None,
+                 scope: Optional[ClaudeScope] = None):
         """
-        Initialize the HookParser with a hooks file path.
+        Initialize the HookParser with a settings file path or context.
 
         Args:
-            hooks_file_path: Path to the hooks.json file.
-                           If None, uses default Claude Code hooks location.
+            hooks_file_path: Direct path to the settings file (for testing).
+                           If None, uses context and scope.
+            context: CLI context with path information.
+            scope: The scope to use (USER, PROJECT, or LOCAL).
+                  Defaults to USER if context is provided but scope is not.
         """
         if hooks_file_path:
+            # Direct path provided (e.g., for testing)
             self.hooks_file_path = Path(hooks_file_path)
+        elif context:
+            # Use context to determine path based on scope
+            if scope is None:
+                scope = ClaudeScope.USER
+            self.hooks_file_path = context.get_claude_settings_path(scope)
         else:
-            # Default Claude Code hooks location
+            # Fallback to default user settings
             home = Path.home()
-            self.hooks_file_path = home / ".config" / "claude" / "hooks.json"
+            self.hooks_file_path = home / ".claude" / "settings.json"
 
-        self.hooks_data: Dict[str, Any] = {"hooks": {}}
-        self._load_hooks()
+        self.settings_data: Dict[str, Any] = {}
+        self._load_settings()
 
-    def _load_hooks(self):
-        """Load hooks from the JSON file."""
+    def _load_settings(self):
+        """Load settings from the JSON file."""
         if self.hooks_file_path.exists():
             try:
                 with open(self.hooks_file_path, 'r') as f:
-                    self.hooks_data = json.load(f)
+                    self.settings_data = json.load(f)
                     # Ensure hooks key exists
-                    if "hooks" not in self.hooks_data:
-                        self.hooks_data["hooks"] = {}
+                    if "hooks" not in self.settings_data:
+                        self.settings_data["hooks"] = {}
             except json.JSONDecodeError as e:
-                print(f"Error parsing hooks file: {e}")
-                self.hooks_data = {"hooks": {}}
+                print(f"Error parsing settings file: {e}")
+                self.settings_data = {"hooks": {}}
         else:
             # Initialize with empty hooks structure
-            self.hooks_data = {"hooks": {}}
+            self.settings_data = {"hooks": {}}
 
     def save_hooks(self):
-        """Save the hooks data to the JSON file."""
+        """Save the settings data to the JSON file."""
         # Create directory if it doesn't exist
         self.hooks_file_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(self.hooks_file_path, 'w') as f:
-            json.dump(self.hooks_data, f, indent=2)
+            json.dump(self.settings_data, f, indent=2)
 
     def get_hooks(self) -> Dict[str, Any]:
         """
@@ -77,7 +94,7 @@ class HookParser:
         Returns:
             The complete hooks data structure
         """
-        return self.hooks_data
+        return self.settings_data.get("hooks", {})
 
     def get_event_hooks(self, event_name: str) -> List[Dict[str, Any]]:
         """
@@ -89,7 +106,7 @@ class HookParser:
         Returns:
             List of hook configurations for the event, or empty list if none exist
         """
-        return self.hooks_data["hooks"].get(event_name, [])
+        return self.settings_data["hooks"].get(event_name, [])
 
     def add_hook(self, event_name: str, matcher: Optional[str], hook_type: str,
                  command: str, **kwargs):
@@ -104,8 +121,8 @@ class HookParser:
             command: The command to execute
             **kwargs: Additional hook properties
         """
-        if event_name not in self.hooks_data["hooks"]:
-            self.hooks_data["hooks"][event_name] = []
+        if event_name not in self.settings_data["hooks"]:
+            self.settings_data["hooks"][event_name] = []
 
         # Create the hook object
         hook_obj = {
@@ -118,7 +135,7 @@ class HookParser:
         if matcher is None:
             # Find existing entry without matcher
             matcher_entry = None
-            for entry in self.hooks_data["hooks"][event_name]:
+            for entry in self.settings_data["hooks"][event_name]:
                 if "matcher" not in entry:
                     matcher_entry = entry
                     break
@@ -131,11 +148,11 @@ class HookParser:
                 new_entry = {
                     "hooks": [hook_obj]
                 }
-                self.hooks_data["hooks"][event_name].append(new_entry)
+                self.settings_data["hooks"][event_name].append(new_entry)
         else:
             # Check if matcher already exists
             matcher_entry = None
-            for entry in self.hooks_data["hooks"][event_name]:
+            for entry in self.settings_data["hooks"][event_name]:
                 if entry.get("matcher") == matcher:
                     matcher_entry = entry
                     break
@@ -149,7 +166,7 @@ class HookParser:
                     "matcher": matcher,
                     "hooks": [hook_obj]
                 }
-                self.hooks_data["hooks"][event_name].append(new_entry)
+                self.settings_data["hooks"][event_name].append(new_entry)
 
     def remove_hook(self, event_name: str, matcher: Optional[str] = None,
                    command: Optional[str] = None) -> bool:
@@ -165,20 +182,20 @@ class HookParser:
         Returns:
             True if any hooks were removed, False otherwise
         """
-        if event_name not in self.hooks_data["hooks"]:
+        if event_name not in self.settings_data["hooks"]:
             return False
 
         removed = False
-        event_hooks = self.hooks_data["hooks"][event_name]
+        event_hooks = self.settings_data["hooks"][event_name]
 
         if matcher:
             # Remove entire matcher entry
             original_len = len(event_hooks)
-            self.hooks_data["hooks"][event_name] = [
+            self.settings_data["hooks"][event_name] = [
                 entry for entry in event_hooks
                 if entry.get("matcher") != matcher
             ]
-            removed = len(self.hooks_data["hooks"][event_name]) < original_len
+            removed = len(self.settings_data["hooks"][event_name]) < original_len
         elif command:
             # Remove hooks with specific command
             for entry in event_hooks:
@@ -191,14 +208,14 @@ class HookParser:
                     removed = True
 
             # Clean up empty matcher entries
-            self.hooks_data["hooks"][event_name] = [
+            self.settings_data["hooks"][event_name] = [
                 entry for entry in event_hooks
                 if entry["hooks"]
             ]
 
         # Clean up empty event entries
-        if not self.hooks_data["hooks"][event_name]:
-            del self.hooks_data["hooks"][event_name]
+        if not self.settings_data["hooks"][event_name]:
+            del self.settings_data["hooks"][event_name]
 
         return removed
 
@@ -215,10 +232,10 @@ class HookParser:
         Returns:
             True if matcher was updated, False if not found
         """
-        if event_name not in self.hooks_data["hooks"]:
+        if event_name not in self.settings_data["hooks"]:
             return False
 
-        for entry in self.hooks_data["hooks"][event_name]:
+        for entry in self.settings_data["hooks"][event_name]:
             if entry.get("matcher") == old_matcher:
                 entry["matcher"] = new_matcher
                 return True
@@ -232,7 +249,7 @@ class HookParser:
         Returns:
             List of event names
         """
-        return list(self.hooks_data["hooks"].keys())
+        return list(self.settings_data["hooks"].keys())
 
     def list_matchers(self, event_name: str) -> List[str]:
         """
@@ -244,10 +261,10 @@ class HookParser:
         Returns:
             List of matcher patterns
         """
-        if event_name not in self.hooks_data["hooks"]:
+        if event_name not in self.settings_data["hooks"]:
             return []
 
-        return [entry.get("matcher", "") for entry in self.hooks_data["hooks"][event_name]]
+        return [entry.get("matcher", "") for entry in self.settings_data["hooks"][event_name]]
 
     def clear_event(self, event_name: str) -> bool:
         """
@@ -259,14 +276,14 @@ class HookParser:
         Returns:
             True if event was cleared, False if it didn't exist
         """
-        if event_name in self.hooks_data["hooks"]:
-            del self.hooks_data["hooks"][event_name]
+        if event_name in self.settings_data["hooks"]:
+            del self.settings_data["hooks"][event_name]
             return True
         return False
 
     def clear_all(self):
         """Clear all hooks from the configuration."""
-        self.hooks_data["hooks"] = {}
+        self.settings_data["hooks"] = {}
 
     def get_hook_details(self, event_name: str, matcher: str) -> Optional[List[Dict[str, Any]]]:
         """
@@ -279,10 +296,10 @@ class HookParser:
         Returns:
             List of hook details, or None if not found
         """
-        if event_name not in self.hooks_data["hooks"]:
+        if event_name not in self.settings_data["hooks"]:
             return None
 
-        for entry in self.hooks_data["hooks"][event_name]:
+        for entry in self.settings_data["hooks"][event_name]:
             if entry.get("matcher") == matcher:
                 return entry.get("hooks", [])
 
@@ -290,4 +307,4 @@ class HookParser:
 
     def __str__(self) -> str:
         """String representation of the hooks configuration."""
-        return json.dumps(self.hooks_data, indent=2)
+        return json.dumps(self.settings_data, indent=2)

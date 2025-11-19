@@ -6,25 +6,25 @@ from commands.setup_cmd.claude_code_setup.hook_parser import HookParser
 
 
 @pytest.fixture
-def temp_hooks_file(tmp_path):
-    """Create a temporary hooks file for testing."""
-    hooks_file = tmp_path / "hooks.json"
-    return hooks_file
+def temp_settings_file(tmp_path):
+    """Create a temporary settings file for testing."""
+    settings_file = tmp_path / "settings.json"
+    return settings_file
 
 
 @pytest.fixture
-def hook_parser(temp_hooks_file):
+def hook_parser(temp_settings_file):
     """Create a HookParser instance with a temporary file."""
-    return HookParser(hooks_file_path=str(temp_hooks_file))
+    return HookParser(hooks_file_path=str(temp_settings_file))
 
 
-def test_hook_parser_initialization(hook_parser, temp_hooks_file):
+def test_hook_parser_initialization(hook_parser, temp_settings_file):
     """Test that HookParser initializes correctly."""
-    assert hook_parser.hooks_file_path == temp_hooks_file
-    assert hook_parser.hooks_data == {"hooks": {}}
+    assert hook_parser.hooks_file_path == temp_settings_file
+    assert hook_parser.settings_data == {"hooks": {}}
 
 
-def test_add_hook_with_matcher(hook_parser, temp_hooks_file):
+def test_add_hook_with_matcher(hook_parser, temp_settings_file):
     """Test adding a hook with a matcher."""
     hook_parser.add_hook(
         event_name="tool_use",
@@ -36,10 +36,10 @@ def test_add_hook_with_matcher(hook_parser, temp_hooks_file):
     hook_parser.save_hooks()
 
     # Verify the file was created
-    assert temp_hooks_file.exists()
+    assert temp_settings_file.exists()
 
     # Load and verify the JSON content
-    with open(temp_hooks_file, 'r') as f:
+    with open(temp_settings_file, 'r') as f:
         data = json.load(f)
 
     assert "hooks" in data
@@ -53,7 +53,7 @@ def test_add_hook_with_matcher(hook_parser, temp_hooks_file):
     assert entry["hooks"][0]["command"] == "flow track grep"
 
 
-def test_add_hook_without_matcher(hook_parser, temp_hooks_file):
+def test_add_hook_without_matcher(hook_parser, temp_settings_file):
     """Test adding a hook without a matcher (like UserPromptSubmit)."""
     hook_parser.add_hook(
         event_name="UserPromptSubmit",
@@ -65,7 +65,7 @@ def test_add_hook_without_matcher(hook_parser, temp_hooks_file):
     hook_parser.save_hooks()
 
     # Load and verify the JSON content
-    with open(temp_hooks_file, 'r') as f:
+    with open(temp_settings_file, 'r') as f:
         data = json.load(f)
 
     assert "hooks" in data
@@ -79,7 +79,7 @@ def test_add_hook_without_matcher(hook_parser, temp_hooks_file):
     assert entry["hooks"][0]["command"] == "/path/to/flow_prompt_hook.py"
 
 
-def test_add_multiple_hooks_same_event(hook_parser, temp_hooks_file):
+def test_add_multiple_hooks_same_event(hook_parser, temp_settings_file):
     """Test adding multiple hooks to the same event."""
     hook_parser.add_hook(
         event_name="tool_use",
@@ -98,7 +98,7 @@ def test_add_multiple_hooks_same_event(hook_parser, temp_hooks_file):
     hook_parser.save_hooks()
 
     # Load and verify the JSON content
-    with open(temp_hooks_file, 'r') as f:
+    with open(temp_settings_file, 'r') as f:
         data = json.load(f)
 
     assert len(data["hooks"]["tool_use"]) == 2
@@ -144,7 +144,7 @@ def test_list_events(hook_parser):
     assert "UserPromptSubmit" in events
 
 
-def test_remove_hook_by_command(hook_parser, temp_hooks_file):
+def test_remove_hook_by_command(hook_parser, temp_settings_file):
     """Test removing a hook by command."""
     hook_parser.add_hook(
         event_name="tool_use",
@@ -156,7 +156,7 @@ def test_remove_hook_by_command(hook_parser, temp_hooks_file):
     hook_parser.save_hooks()
 
     # Verify it was added
-    with open(temp_hooks_file, 'r') as f:
+    with open(temp_settings_file, 'r') as f:
         data = json.load(f)
     assert "tool_use" in data["hooks"]
 
@@ -170,7 +170,7 @@ def test_remove_hook_by_command(hook_parser, temp_hooks_file):
     hook_parser.save_hooks()
 
     # Verify it was removed
-    with open(temp_hooks_file, 'r') as f:
+    with open(temp_settings_file, 'r') as f:
         data = json.load(f)
     assert "tool_use" not in data["hooks"]
 
@@ -186,10 +186,10 @@ def test_clear_event(hook_parser):
 
     cleared = hook_parser.clear_event("tool_use")
     assert cleared is True
-    assert "tool_use" not in hook_parser.hooks_data["hooks"]
+    assert "tool_use" not in hook_parser.settings_data["hooks"]
 
 
-def test_json_format_structure(hook_parser, temp_hooks_file):
+def test_json_format_structure(hook_parser, temp_settings_file):
     """Test that the saved JSON has the correct structure."""
     hook_parser.add_hook(
         event_name="UserPromptSubmit",
@@ -201,7 +201,7 @@ def test_json_format_structure(hook_parser, temp_hooks_file):
     hook_parser.save_hooks()
 
     # Read the JSON and verify its structure
-    with open(temp_hooks_file, 'r') as f:
+    with open(temp_settings_file, 'r') as f:
         data = json.load(f)
 
     # Check top-level structure

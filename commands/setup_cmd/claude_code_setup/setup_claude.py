@@ -3,20 +3,29 @@
 import os
 import sys
 from pathlib import Path
+from cli_context import CLIContext, ClaudeScope
 from commands.setup_cmd.claude_code_setup.hook_parser import HookParser
 
 
-def setup_claude_code():
+def setup_claude_code(context: CLIContext):
     """
     Run the setup specific to Claude Code.
+
+    Args:
+        context: CLI context with path information
 
     Returns:
         str: Setup result message
     """
     print("Setting up Claude Code integration...")
 
-    # Initialize the hook parser
-    hook_parser = HookParser()
+    # Determine the scope to use
+    scope = _determine_scope(context)
+    print(f"Using scope: {scope.value} - {context.get_scope_description(scope)}")
+    print(f"Settings path: {context.get_claude_settings_path(scope)}")
+
+    # Initialize the hook parser with the appropriate scope
+    hook_parser = HookParser(context=context, scope=scope)
 
     print("Configuring Claude Code hooks...")
 
@@ -123,6 +132,26 @@ if __name__ == "__main__":
     hook_script_path.parent.mkdir(parents=True, exist_ok=True)
     hook_script_path.write_text(hook_script_content)
     os.chmod(hook_script_path, 0o755)
+
+
+def _determine_scope(context: CLIContext) -> ClaudeScope:
+    """
+    Determine which scope to use for setup.
+
+    Priority:
+    1. If in a git repo, use PROJECT scope (shared with team)
+    2. Otherwise, use USER scope (global)
+
+    Args:
+        context: CLI context
+
+    Returns:
+        The scope to use
+    """
+    if context.is_in_repo():
+        return ClaudeScope.PROJECT
+    else:
+        return ClaudeScope.USER
 
 
 def add_flow_tracking_hook():

@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 
 import sys
+from cli_context import CLIContext
 from config_manager import list_config, set_config_value, remove_config_value, setup_defaults
 from commands.setup_cmd.setup_cmd import run_setup
 from commands.prompt_cmd import run_prompt_command
 
 
 def main():
+    # Initialize CLI context
+    context = CLIContext()
+
     # Ensure config defaults are set
     setup_defaults()
 
@@ -19,7 +23,7 @@ def main():
     if command == "config":
         handle_config_command()
     elif command == "setup":
-        handle_setup_command()
+        handle_setup_command(context)
     elif command == "prompt":
         handle_prompt_command()
     else:
@@ -27,7 +31,7 @@ def main():
         print("Available commands: config, setup, prompt")
 
 
-def handle_setup_command():
+def handle_setup_command(context: CLIContext):
     if len(sys.argv) < 3:
         print("Usage: flow setup <agent_name>")
         return
@@ -37,7 +41,7 @@ def handle_setup_command():
     # Set first_time_prompt flag when running setup
     set_config_value("first_time_prompt", "true")
 
-    run_setup(agent_name)
+    run_setup(agent_name, context)
 
 
 def handle_prompt_command():
