@@ -13,6 +13,10 @@ app = FastAPI()
 login_result = None
 login_received = threading.Event()
 
+# Shared state for ping
+ping_results = []
+ping_received = threading.Event()
+
 
 @app.get("/post_login")
 async def post_login(api_key: str):
@@ -37,6 +41,45 @@ async def post_login(api_key: str):
     login_received.set()
 
     return JSONResponse(content=login_result)
+
+
+@app.get("/ping")
+async def ping(ping_str: str):
+    """
+    Ping endpoint that receives a ping string for testing hooks.
+
+    Args:
+        ping_str: The ping string to store
+
+    Returns:
+        JSON response with success status
+    """
+    global ping_results
+
+    result = {
+        "success": True,
+        "ping_str": ping_str,
+        "timestamp": time.time()
+    }
+
+    # Store the ping result
+    ping_results.append(result)
+
+    # Signal that ping was received
+    ping_received.set()
+
+    return JSONResponse(content=result)
+
+
+@app.get("/get_pings")
+async def get_pings():
+    """
+    Get all received pings.
+
+    Returns:
+        JSON response with all ping results
+    """
+    return JSONResponse(content={"pings": ping_results})
 
 
 def start_server(port: int):

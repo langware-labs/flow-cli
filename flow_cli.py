@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 import sys
+import requests
 from cli_context import CLIContext
-from config_manager import list_config, set_config_value, remove_config_value, setup_defaults
+from config_manager import list_config, set_config_value, remove_config_value, setup_defaults, get_config_value
 from commands.setup_cmd.setup_cmd import run_setup
 from commands.prompt_cmd import run_prompt_command
 
@@ -26,9 +27,11 @@ def main():
         handle_setup_command(context)
     elif command == "prompt":
         handle_prompt_command()
+    elif command == "ping":
+        handle_ping_command()
     else:
         print(f"Unknown command: {command}")
-        print("Available commands: config, setup, prompt")
+        print("Available commands: config, setup, prompt, ping")
 
 
 def handle_setup_command(context: CLIContext):
@@ -52,6 +55,36 @@ def handle_prompt_command():
     # Get the prompt from all remaining arguments (in case it has spaces)
     user_prompt = " ".join(sys.argv[2:])
     run_prompt_command(user_prompt)
+
+
+def handle_ping_command():
+    """
+    Handle the ping command to test hook integration.
+    Sends a ping string to the local server.
+    """
+    if len(sys.argv) < 3:
+        print("Usage: flow ping <ping-string>")
+        return
+
+    # Get the ping string from all remaining arguments
+    ping_str = " ".join(sys.argv[2:])
+
+    # Get the local server port from config
+    setup_defaults()
+    port_str = get_config_value("local_cli_port")
+    port = int(port_str) if port_str else 9006
+
+    # Send ping to local server
+    try:
+        url = f"http://127.0.0.1:{port}/ping"
+        response = requests.get(url, params={"ping_str": ping_str}, timeout=5)
+
+        if response.status_code == 200:
+            print(f"Ping sent successfully: {ping_str}")
+        else:
+            print(f"Ping failed with status {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error sending ping: {e}")
 
 
 def handle_config_command():

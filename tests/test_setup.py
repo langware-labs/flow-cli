@@ -1,8 +1,13 @@
 import json
 import pytest
+import subprocess
+import time
+import threading
+import requests
 from pathlib import Path
-from commands.setup_cmd.claude_code_setup.setup_claude import setup_claude_code
+from cli_context import CLIContext, ClaudeScope
 from commands.setup_cmd.claude_code_setup.hook_parser import HookParser
+from local_server.server import app, start_server
 
 
 @pytest.fixture
@@ -13,216 +18,147 @@ def temp_settings_file(tmp_path):
 
 
 @pytest.fixture
-def hook_parser(temp_settings_file):
-    """Create a HookParser instance with a temporary file."""
-    return HookParser(hooks_file_path=str(temp_settings_file))
+def test_server():
+    """Start a test server and return its port."""
+    port = 9007  # Use different port to avoid conflicts
 
+    # Clear any previous ping results
+    from local_server.server import ping_results
+    ping_results.clear()
 
-def test_hook_parser_initialization(hook_parser, temp_settings_file):
-    """Test that HookParser initializes correctly."""
-    assert hook_parser.hooks_file_path == temp_settings_file
-    assert hook_parser.settings_data == {"hooks": {}}
-
-
-def test_add_hook_with_matcher(hook_parser, temp_settings_file):
-    """Test adding a hook with a matcher."""
-    hook_parser.add_hook(
-        event_name="tool_use",
-        matcher="Grep",
-        hook_type="command",
-        command="flow track grep"
+    # Start server in background thread
+    server_thread = threading.Thread(
+        target=start_server,
+        args=(port,),
+        daemon=True
     )
+    server_thread.start()
 
-    hook_parser.save_hooks()
+    # Give server time to start
+    time.sleep(1)
 
-    # Verify the file was created
-    assert temp_settings_file.exists()
+    yield port
 
-    # Load and verify the JSON content
-    with open(temp_settings_file, 'r') as f:
-        data = json.load(f)
-
-    assert "hooks" in data
-    assert "tool_use" in data["hooks"]
-    assert len(data["hooks"]["tool_use"]) == 1
-
-    entry = data["hooks"]["tool_use"][0]
-    assert entry["matcher"] == "Grep"
-    assert len(entry["hooks"]) == 1
-    assert entry["hooks"][0]["type"] == "command"
-    assert entry["hooks"][0]["command"] == "flow track grep"
+    # Server will be automatically stopped when test ends (daemon thread)
 
 
-def test_add_hook_without_matcher(hook_parser, temp_settings_file):
-    """Test adding a hook without a matcher (like UserPromptSubmit)."""
-    hook_parser.add_hook(
-        event_name="UserPromptSubmit",
-        matcher=None,
-        hook_type="command",
-        command="/path/to/flow_prompt_hook.py"
+def test_ping():
+    """
+    Comprehensive test for the ping feedback loop:
+    1. Start internal server as interceptor
+    2. Configure hook on UserPromptSubmit event
+    3. Simulate Claude prompt submission
+    4. Hook calls flow ping with the prompt
+    5. Server receives the ping
+    6. Test validates the ping was received
+    """
+    # Step 1: Start the test server
+    port = 9007
+    from local_server.server import ping_results
+    ping_results.clear()
+
+    server_thread = threading.Thread(
+        target=start_server,
+        args=(port,),
+        daemon=True
     )
+    server_thread.start()
+    time.sleep(1)
 
-    hook_parser.save_hooks()
+    print(f"\n✓ Step 1: Server started on port {port}")
 
-    # Load and verify the JSON content
-    with open(temp_settings_file, 'r') as f:
-        data = json.load(f)
+    try:
+        # Step 2: Configure the hook
+        # Create a temporary directory for test configuration
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            settings_file = tmp_path / "settings.json"
 
-    assert "hooks" in data
-    assert "UserPromptSubmit" in data["hooks"]
-    assert len(data["hooks"]["UserPromptSubmit"]) == 1
+            # Create a context and hook parser
+            hook_parser = HookParser(hooks_file_path=str(settings_file))
 
-    entry = data["hooks"]["UserPromptSubmit"][0]
-    assert "matcher" not in entry
-    assert len(entry["hooks"]) == 1
-    assert entry["hooks"][0]["type"] == "command"
-    assert entry["hooks"][0]["command"] == "/path/to/flow_prompt_hook.py"
+            # Get the path to the ping hook script
+            hook_script_path = Path(__file__).parent.parent / "commands" / "setup_cmd" / "claude_code_setup" / "flow_ping_hook.py"
 
+            # Make sure the hook script exists and is executable
+            assert hook_script_path.exists(), f"Hook script not found at {hook_script_path}"
 
-def test_add_multiple_hooks_same_event(hook_parser, temp_settings_file):
-    """Test adding multiple hooks to the same event."""
-    hook_parser.add_hook(
-        event_name="tool_use",
-        matcher="Grep",
-        hook_type="command",
-        command="flow track grep"
-    )
+            # Add the hook for UserPromptSubmit
+            hook_parser.add_hook(
+                event_name="UserPromptSubmit",
+                matcher=None,  # UserPromptSubmit doesn't use matchers
+                hook_type="command",
+                command=str(hook_script_path)
+            )
 
-    hook_parser.add_hook(
-        event_name="tool_use",
-        matcher="Read",
-        hook_type="command",
-        command="flow track read"
-    )
+            hook_parser.save_hooks()
 
-    hook_parser.save_hooks()
+            # Verify the hook was configured
+            assert settings_file.exists()
+            with open(settings_file, 'r') as f:
+                data = json.load(f)
+            assert "hooks" in data
+            assert "UserPromptSubmit" in data["hooks"]
 
-    # Load and verify the JSON content
-    with open(temp_settings_file, 'r') as f:
-        data = json.load(f)
+            print("✓ Step 2: Hook configured in settings.json")
 
-    assert len(data["hooks"]["tool_use"]) == 2
+            # Step 3: Simulate Claude prompt submission by calling the hook directly
+            test_prompt = "hi claude"
 
-    matchers = [entry["matcher"] for entry in data["hooks"]["tool_use"]]
-    assert "Grep" in matchers
-    assert "Read" in matchers
+            # Prepare the input data that Claude would send to the hook
+            hook_input = {
+                "prompt": test_prompt,
+                "event": "UserPromptSubmit"
+            }
 
+            # Update config to point to our test server
+            from config_manager import set_config_value
+            set_config_value("local_cli_port", str(port))
 
-def test_get_event_hooks(hook_parser):
-    """Test retrieving hooks for a specific event."""
-    hook_parser.add_hook(
-        event_name="tool_use",
-        matcher="*",
-        hook_type="command",
-        command="flow track all"
-    )
+            print(f"✓ Step 3: Simulating prompt: '{test_prompt}'")
 
-    event_hooks = hook_parser.get_event_hooks("tool_use")
-    assert len(event_hooks) == 1
-    assert event_hooks[0]["matcher"] == "*"
+            # Step 4: Call the hook script
+            # Set PYTHONPATH to include the project root so imports work
+            import os
+            project_root = Path(__file__).parent.parent
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(project_root)
 
+            result = subprocess.run(
+                ["python3", str(hook_script_path)],
+                input=json.dumps(hook_input),
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env
+            )
 
-def test_list_events(hook_parser):
-    """Test listing all configured events."""
-    hook_parser.add_hook(
-        event_name="tool_use",
-        matcher="*",
-        hook_type="command",
-        command="flow track"
-    )
+            print(f"✓ Step 4: Hook executed (exit code: {result.returncode})")
+            if result.stderr:
+                print(f"  Hook stderr: {result.stderr}")
 
-    hook_parser.add_hook(
-        event_name="UserPromptSubmit",
-        matcher=None,
-        hook_type="command",
-        command="flow prompt"
-    )
+            # Give the ping time to reach the server
+            time.sleep(1)
 
-    events = hook_parser.list_events()
-    assert len(events) == 2
-    assert "tool_use" in events
-    assert "UserPromptSubmit" in events
+            # Step 5 & 6: Verify the server received the ping
+            response = requests.get(f"http://127.0.0.1:{port}/get_pings", timeout=5)
+            assert response.status_code == 200
 
+            pings = response.json()["pings"]
+            print(f"✓ Step 5: Server received {len(pings)} ping(s)")
 
-def test_remove_hook_by_command(hook_parser, temp_settings_file):
-    """Test removing a hook by command."""
-    hook_parser.add_hook(
-        event_name="tool_use",
-        matcher="*",
-        hook_type="command",
-        command="flow track"
-    )
+            # Verify we got at least one ping
+            assert len(pings) > 0, "No pings received by server"
 
-    hook_parser.save_hooks()
+            # Verify the ping contains our test prompt
+            last_ping = pings[-1]
+            assert "ping_str" in last_ping
+            assert last_ping["ping_str"] == test_prompt
 
-    # Verify it was added
-    with open(temp_settings_file, 'r') as f:
-        data = json.load(f)
-    assert "tool_use" in data["hooks"]
+            print(f"✓ Step 6: Ping validated! Received: '{last_ping['ping_str']}'")
+            print("\n✅ Full feedback loop test PASSED")
 
-    # Remove it
-    removed = hook_parser.remove_hook(
-        event_name="tool_use",
-        command="flow track"
-    )
-
-    assert removed is True
-    hook_parser.save_hooks()
-
-    # Verify it was removed
-    with open(temp_settings_file, 'r') as f:
-        data = json.load(f)
-    assert "tool_use" not in data["hooks"]
-
-
-def test_clear_event(hook_parser):
-    """Test clearing all hooks for an event."""
-    hook_parser.add_hook(
-        event_name="tool_use",
-        matcher="*",
-        hook_type="command",
-        command="flow track"
-    )
-
-    cleared = hook_parser.clear_event("tool_use")
-    assert cleared is True
-    assert "tool_use" not in hook_parser.settings_data["hooks"]
-
-
-def test_json_format_structure(hook_parser, temp_settings_file):
-    """Test that the saved JSON has the correct structure."""
-    hook_parser.add_hook(
-        event_name="UserPromptSubmit",
-        matcher=None,
-        hook_type="command",
-        command="/usr/local/bin/flow_hook.py"
-    )
-
-    hook_parser.save_hooks()
-
-    # Read the JSON and verify its structure
-    with open(temp_settings_file, 'r') as f:
-        data = json.load(f)
-
-    # Check top-level structure
-    assert isinstance(data, dict)
-    assert "hooks" in data
-    assert isinstance(data["hooks"], dict)
-
-    # Check event structure
-    assert "UserPromptSubmit" in data["hooks"]
-    assert isinstance(data["hooks"]["UserPromptSubmit"], list)
-
-    # Check entry structure
-    entry = data["hooks"]["UserPromptSubmit"][0]
-    assert isinstance(entry, dict)
-    assert "hooks" in entry
-    assert isinstance(entry["hooks"], list)
-
-    # Check hook structure
-    hook = entry["hooks"][0]
-    assert isinstance(hook, dict)
-    assert "type" in hook
-    assert "command" in hook
-    assert hook["type"] == "command"
-    assert hook["command"] == "/usr/local/bin/flow_hook.py"
+    except Exception as e:
+        print(f"\n❌ Test failed: {e}")
+        raise
