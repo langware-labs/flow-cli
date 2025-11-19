@@ -4,10 +4,44 @@ import subprocess
 import time
 import threading
 import requests
+import os
 from pathlib import Path
 from cli_context import CLIContext, ClaudeScope
 from commands.setup_cmd.claude_code_setup.hook_parser import HookParser
 from local_server.server import app, start_server
+
+
+def self_run_cli(command: str):
+    """
+    Run the flow CLI as if it was invoked from command line.
+
+    Args:
+        command: The command string (e.g., "ping hello" or "setup claude-code")
+
+    Returns:
+        subprocess.CompletedProcess result
+    """
+    # Get the path to flow_cli.py
+    project_root = Path(__file__).parent.parent
+    flow_cli_path = project_root / "flow_cli.py"
+
+    # Split the command into arguments
+    args = command.split()
+
+    # Set up environment with PYTHONPATH
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(project_root)
+
+    # Run the CLI
+    result = subprocess.run(
+        ["python3", str(flow_cli_path)] + args,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=10
+    )
+
+    return result
 
 
 @pytest.fixture
@@ -46,15 +80,9 @@ def test_ping():
     """
     Comprehensive test for the ping feedback loop:
     1. Start internal server as interceptor
-    2. Configure hook on UserPromptSubmit event
-    3. Run Claude Code with a prompt (or test hook directly if Claude not available)
-    4. Hook intercepts and calls flow ping with the prompt
-    5. Server receives the ping
-    6. Test validates the ping was received
-
-    NOTE: Claude Code's UserPromptSubmit hooks may not fire in headless mode (-p).
-    If Claude is not available or hooks don't fire, the test falls back to testing
-    the hook script directly to validate the feedback loop mechanism.
+    2. Use self_run_cli to invoke "flow ping <message>"
+    3. Verify server receives the ping
+    4. Validates complete CLI → Server feedback loop
     """
     # Step 1: Start the test server
     port = 9007
@@ -72,118 +100,40 @@ def test_ping():
     print(f"\n✓ Step 1: Server started on port {port}")
 
     try:
-        # Step 2: Configure the hook in actual Claude settings
-        # Use the real Claude settings location
-        import os
-        claude_settings_dir = Path.home() / ".claude"
-        claude_settings_dir.mkdir(parents=True, exist_ok=True)
-        settings_file = claude_settings_dir / "settings.json"
+        # Update config to point to our test server
+        from config_manager import set_config_value
+        set_config_value("local_cli_port", str(port))
 
-        # Backup existing settings if they exist
-        backup_file = None
-        if settings_file.exists():
-            backup_file = settings_file.with_suffix('.json.backup')
-            import shutil
-            shutil.copy2(settings_file, backup_file)
-            print(f"  Backed up existing settings to {backup_file}")
+        # Step 2: Use self_run_cli to send a ping
+        test_message = "hello from test"
 
-        try:
-            # Create hook parser for user settings
-            hook_parser = HookParser(hooks_file_path=str(settings_file))
+        print(f"✓ Step 2: Running CLI command: flow ping {test_message}")
 
-            # Get the path to the ping hook script
-            hook_script_path = Path(__file__).parent.parent / "commands" / "setup_cmd" / "claude_code_setup" / "flow_ping_hook.py"
+        result = self_run_cli(f"ping {test_message}")
 
-            # Make sure the hook script exists and is executable
-            assert hook_script_path.exists(), f"Hook script not found at {hook_script_path}"
-            os.chmod(hook_script_path, 0o755)
+        print(f"✓ Step 3: CLI executed (exit code: {result.returncode})")
+        if result.stdout:
+            print(f"  stdout: {result.stdout.strip()}")
+        if result.stderr:
+            print(f"  stderr: {result.stderr.strip()}")
 
-            # Add the hook for UserPromptSubmit
-            hook_parser.add_hook(
-                event_name="UserPromptSubmit",
-                matcher=None,
-                hook_type="command",
-                command=str(hook_script_path)
-            )
+        # Step 4: Verify the server received the ping
+        response = requests.get(f"http://127.0.0.1:{port}/get_pings", timeout=5)
+        assert response.status_code == 200
 
-            hook_parser.save_hooks()
+        pings = response.json()["pings"]
+        print(f"✓ Step 4: Server received {len(pings)} ping(s)")
 
-            print(f"✓ Step 2: Hook configured in {settings_file}")
+        # Verify we got at least one ping
+        assert len(pings) > 0, "No pings received by server"
 
-            # Update config to point to our test server
-            from config_manager import set_config_value
-            set_config_value("local_cli_port", str(port))
+        # Verify the ping contains our test message
+        last_ping = pings[-1]
+        assert "ping_str" in last_ping
+        assert last_ping["ping_str"] == test_message
 
-            # Step 3: Run Claude Code with a prompt
-            test_prompt = "say hello"
-
-            print(f"✓ Step 3: Running Claude Code with prompt: '{test_prompt}'")
-
-            # Check if claude command exists
-            claude_check = subprocess.run(
-                ["which", "claude"],
-                capture_output=True,
-                text=True
-            )
-
-            # Always test hook directly since Claude's -p mode may not fire hooks
-            # This is the most reliable way to test the feedback loop
-            print("  Testing hook script directly (Claude -p mode may not fire UserPromptSubmit hooks)")
-
-            hook_input = {
-                "prompt": test_prompt,
-                "event": "UserPromptSubmit"
-            }
-
-            env = os.environ.copy()
-            env["PYTHONPATH"] = str(Path(__file__).parent.parent)
-
-            result = subprocess.run(
-                ["python3", str(hook_script_path)],
-                input=json.dumps(hook_input),
-                capture_output=True,
-                text=True,
-                timeout=10,
-                env=env
-            )
-
-            print(f"✓ Step 4: Hook executed (exit code: {result.returncode})")
-            if result.stdout:
-                print(f"  Hook stdout: {result.stdout}")
-            if result.stderr:
-                print(f"  Hook stderr: {result.stderr}")
-
-            # Give the ping time to reach the server
-            time.sleep(2)
-
-            # Step 5 & 6: Verify the server received the ping
-            response = requests.get(f"http://127.0.0.1:{port}/get_pings", timeout=5)
-            assert response.status_code == 200
-
-            pings = response.json()["pings"]
-            print(f"✓ Step 5: Server received {len(pings)} ping(s)")
-
-            # Verify we got at least one ping
-            assert len(pings) > 0, "No pings received by server"
-
-            # Verify the ping contains our test prompt
-            last_ping = pings[-1]
-            assert "ping_str" in last_ping
-            assert last_ping["ping_str"] == test_prompt
-
-            print(f"✓ Step 6: Ping validated! Received: '{last_ping['ping_str']}'")
-            print("\n✅ Full feedback loop test PASSED")
-
-        finally:
-            # Restore backup if it exists
-            if backup_file and backup_file.exists():
-                import shutil
-                shutil.move(str(backup_file), str(settings_file))
-                print(f"  Restored original settings from backup")
-            elif settings_file.exists():
-                # Remove test settings if no backup existed
-                settings_file.unlink()
-                print(f"  Removed test settings")
+        print(f"✓ Step 5: Ping validated! Received: '{last_ping['ping_str']}'")
+        print("\n✅ Full feedback loop test PASSED")
 
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
