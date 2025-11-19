@@ -5,8 +5,12 @@ setup(
     version="0.1.0",
     description="Flow CLI tool for flowpad",
     author="Langweare Labs",
-    py_modules=["flow_cli"],
-    install_requires=[],
+    packages=find_packages(),
+    py_modules=["flow_cli", "config_manager"],
+    install_requires=[
+        "platformdirs",
+        "requests",
+    ],
     entry_points={
         "console_scripts": [
             "flow=flow_cli:main",
