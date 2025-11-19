@@ -23,3 +23,19 @@ flow
 ```
 
 This will print "Hello flowpad".
+
+## Development
+
+### Running Tests
+
+Install development dependencies:
+
+```bash
+pip install -e ".[dev]"
+```
+
+Run tests:
+
+```bash
+pytest tests/ -v
+```
