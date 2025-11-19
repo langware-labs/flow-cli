@@ -7,7 +7,7 @@ A CLI tool for flowpad.
 Install directly from GitHub:
 
 ```bash
-pip install git+https://github.com/langweare-labs/flow-cli.git
+pip install git+https://github.com/langware-labs/flow-cli.git
 ```
 
 ## Usage
