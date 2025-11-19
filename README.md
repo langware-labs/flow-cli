@@ -10,6 +10,12 @@ Install directly from GitHub:
 pip install git+https://github.com/langware-labs/flow-cli.git
 ```
 
+## Uninstallation
+
+```bash
+pip uninstall flow-cli
+```
+
 ## Usage
 
 ```bash
