@@ -1,7 +1,56 @@
 #!/usr/bin/env python3
 
 import requests
+from enum import Enum
 from config_manager import get_config_value, setup_defaults
+from commands.setup_cmd.claude_code_setup.setup_claude import setup_claude_code
+
+
+class AgentType(Enum):
+    """Enum for supported coding agents"""
+    CLAUDE_CODE = "claude-code"
+    GITHUB_COPILOT = "github-copilot"
+    CURSOR = "cursor"
+
+
+# Mapping of agent keywords to AgentType enum
+AGENT_KEYWORD_MAP = {
+    # Claude Code variations
+    "claude-code": AgentType.CLAUDE_CODE,
+    "claude_code": AgentType.CLAUDE_CODE,
+    "claudecode": AgentType.CLAUDE_CODE,
+    "claude code": AgentType.CLAUDE_CODE,
+    "claude": AgentType.CLAUDE_CODE,
+
+    # GitHub Copilot variations
+    "github-copilot": AgentType.GITHUB_COPILOT,
+    "github_copilot": AgentType.GITHUB_COPILOT,
+    "githubcopilot": AgentType.GITHUB_COPILOT,
+    "github copilot": AgentType.GITHUB_COPILOT,
+    "copilot": AgentType.GITHUB_COPILOT,
+
+    # Cursor variations
+    "cursor": AgentType.CURSOR,
+}
+
+
+def normalize_agent_name(agent_name):
+    """
+    Normalize the agent name to a standard AgentType enum.
+
+    Args:
+        agent_name: The agent name as provided by the user or LLM
+
+    Returns:
+        AgentType: The normalized agent type, or None if not recognized
+    """
+    if not agent_name:
+        return None
+
+    # Convert to lowercase and strip whitespace for comparison
+    normalized = agent_name.lower().strip()
+
+    return AGENT_KEYWORD_MAP.get(normalized)
 
 
 def healthcheck_api_server():
@@ -45,9 +94,26 @@ def run_setup(agent_name):
     if not agent_name:
         agent_name = "unknown"
 
+    # Normalize the agent name
+    agent_type = normalize_agent_name(agent_name)
+
     result = f"Setting up flowpad for {agent_name}..."
     print(result)
     print(f"Agent: {agent_name}")
+
+    # Call agent-specific setup based on the normalized type
+    if agent_type == AgentType.CLAUDE_CODE:
+        print(f"\nRecognized as: {agent_type.value}")
+        setup_claude_code()
+    elif agent_type == AgentType.GITHUB_COPILOT:
+        print(f"\nRecognized as: {agent_type.value}")
+        print("GitHub Copilot setup not yet implemented")
+    elif agent_type == AgentType.CURSOR:
+        print(f"\nRecognized as: {agent_type.value}")
+        print("Cursor setup not yet implemented")
+    else:
+        print(f"\n⚠ Unknown agent type: {agent_name}")
+        print("Proceeding with generic setup...")
 
     # Perform healthcheck
     print("\nPerforming API server healthcheck...")

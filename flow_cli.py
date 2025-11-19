@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 
 import sys
-from config_manager import list_config, set_config_value, remove_config_value
+from config_manager import list_config, set_config_value, remove_config_value, setup_defaults
 from commands.setup_cmd.setup_cmd import run_setup
+from commands.prompt_cmd import run_prompt_command
 
 
 def main():
+    # Ensure config defaults are set
+    setup_defaults()
+
     if len(sys.argv) < 2:
         print("Hello flowpad")
         return
@@ -16,9 +20,11 @@ def main():
         handle_config_command()
     elif command == "setup":
         handle_setup_command()
+    elif command == "prompt":
+        handle_prompt_command()
     else:
         print(f"Unknown command: {command}")
-        print("Available commands: config, setup")
+        print("Available commands: config, setup, prompt")
 
 
 def handle_setup_command():
@@ -27,7 +33,21 @@ def handle_setup_command():
         return
 
     agent_name = sys.argv[2]
+
+    # Set first_time_prompt flag when running setup
+    set_config_value("first_time_prompt", "true")
+
     run_setup(agent_name)
+
+
+def handle_prompt_command():
+    if len(sys.argv) < 3:
+        # No prompt provided, just exit silently
+        return
+
+    # Get the prompt from all remaining arguments (in case it has spaces)
+    user_prompt = " ".join(sys.argv[2:])
+    run_prompt_command(user_prompt)
 
 
 def handle_config_command():

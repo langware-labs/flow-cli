@@ -10,6 +10,8 @@ setup(
     install_requires=[
         "platformdirs",
         "requests",
+        "fastapi",
+        "uvicorn",
     ],
     entry_points={
         "console_scripts": [
