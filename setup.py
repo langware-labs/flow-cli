@@ -6,7 +6,7 @@ setup(
     description="Flow CLI tool for flowpad",
     author="Langweare Labs",
     packages=find_packages(),
-    py_modules=["flow_cli", "config_manager", "cli_context"],
+    py_modules=["flow_cli", "config_manager", "cli_context", "cli_command"],
     install_requires=[
         "platformdirs",
         "requests",
