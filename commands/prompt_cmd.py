@@ -4,6 +4,7 @@ Flow prompt command handler.
 Called by Claude Code hook on UserPromptSubmit events.
 """
 
+from cli_command import CLICommand
 from config_manager import get_config_value, set_config_value
 
 
@@ -49,11 +50,12 @@ def handle_prompt(user_prompt):
     return ""
 
 
-def run_prompt_command(user_prompt):
+def run_prompt_command(user_prompt, cmd: CLICommand):
     """
     Main entry point for 'flow prompt' command.
 
     Args:
         user_prompt: The user's prompt text
+        cmd: CLICommand with context and command details
     """
     return handle_prompt(user_prompt)

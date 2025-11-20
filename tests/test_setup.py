@@ -73,7 +73,7 @@ def test_ping_mock_claude():
         set_config_value("local_cli_port", str(port))
 
         # Step 2: Use self_run_cli to send a ping
-        test_message = "hello from test"
+        test_message = "hello_from_test"
 
         print(f"✓ Step 2: Running CLI command: flow ping {test_message}")
 

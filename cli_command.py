@@ -4,7 +4,10 @@ CLI Command class for parsing and executing flow CLI commands.
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cli_context import CLIContext
 
 
 class CLICommand:
@@ -13,18 +16,22 @@ class CLICommand:
 
     The command can be executed either as an installed command (e.g., 'flow ping hello')
     or using Python directly (e.g., 'python3 flow_cli.py ping hello').
+
+    The command can also hold a CLIContext for passing to command handlers.
     """
 
-    def __init__(self, command: str, use_python: bool = False):
+    def __init__(self, command: str, use_python: bool = False, context: Optional["CLIContext"] = None):
         """
         Initialize a CLI command.
 
         Args:
             command: The command string (e.g., "ping hello" or "setup claude-code")
             use_python: If True, use 'python3 flow_cli.py' instead of 'flow' command
+            context: Optional CLIContext for the command execution
         """
         self.command = command.strip()
         self.use_python = use_python
+        self.context = context
         self._parse_command()
 
     def _parse_command(self):
@@ -69,7 +76,8 @@ class CLICommand:
 
     def __repr__(self) -> str:
         """String representation of the command."""
-        return f"CLICommand(command='{self.command}', use_python={self.use_python})"
+        context_info = f", context={self.context is not None}" if self.context else ""
+        return f"CLICommand(command='{self.command}', use_python={self.use_python}{context_info})"
 
     def __str__(self) -> str:
         """User-friendly string representation."""

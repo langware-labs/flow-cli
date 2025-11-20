@@ -2,7 +2,7 @@
 
 import requests
 from enum import Enum
-from cli_context import CLIContext
+from cli_command import CLICommand
 from config_manager import get_config_value, setup_defaults
 from commands.setup_cmd.claude_code_setup.setup_claude import setup_claude_code
 
@@ -82,13 +82,13 @@ def healthcheck_api_server():
         return None, False
 
 
-def run_setup(agent_name, context: CLIContext):
+def run_setup(agent_name, cmd: CLICommand):
     """
     Run the setup command for the specified coding agent.
 
     Args:
         agent_name: The name of the coding agent (e.g., 'claude-code', 'github-copilot', 'cursor')
-        context: CLI context with path information
+        cmd: CLICommand with context and command details
 
     Returns:
         str: Setup instructions or result message
@@ -106,7 +106,7 @@ def run_setup(agent_name, context: CLIContext):
     # Call agent-specific setup based on the normalized type
     if agent_type == AgentType.CLAUDE_CODE:
         print(f"\nRecognized as: {agent_type.value}")
-        setup_claude_code(context)
+        setup_claude_code(cmd.context)
     elif agent_type == AgentType.GITHUB_COPILOT:
         print(f"\nRecognized as: {agent_type.value}")
         print("GitHub Copilot setup not yet implemented")

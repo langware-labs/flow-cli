@@ -54,11 +54,12 @@ def setup(
     Example: flow setup claude-code
     """
     context = get_context()
+    cmd = CLICommand(f"setup {agent_name}", context=context)
 
     # Set first_time_prompt flag when running setup
     set_config_value("first_time_prompt", "true")
 
-    run_setup(agent_name, context)
+    run_setup(agent_name, cmd)
 
 
 @app.command()
@@ -71,7 +72,9 @@ def prompt(
     Example: flow prompt "analyze this code"
     """
     if prompt_text:
-        run_prompt_command(prompt_text)
+        context = get_context()
+        cmd = CLICommand(f"prompt {prompt_text}", context=context)
+        run_prompt_command(prompt_text, cmd)
 
 
 @app.command()
@@ -83,6 +86,9 @@ def ping(
 
     Example: flow ping hello
     """
+    context = get_context()
+    cmd = CLICommand(f"ping {ping_str}", context=context)
+
     # Get the local server port from config
     setup_defaults()
     port_str = get_config_value("local_cli_port")

@@ -1,6 +1,7 @@
 import pytest
 from pathlib import Path
 from cli_command import CLICommand
+from cli_context import CLIContext
 
 
 def test_clicommand_basic_parsing():
@@ -148,3 +149,36 @@ def test_executable_args_consistency():
     args2 = cmd.executable_args
 
     assert args1 == args2
+
+
+def test_clicommand_with_context():
+    """Test CLICommand with context."""
+    context = CLIContext()
+    cmd = CLICommand("ping hello", context=context)
+
+    assert cmd.context is not None
+    assert cmd.context == context
+    assert cmd.subcommand == "ping"
+    assert cmd.args == ["hello"]
+
+
+def test_clicommand_without_context():
+    """Test CLICommand without context (default None)."""
+    cmd = CLICommand("ping hello")
+
+    assert cmd.context is None
+    assert cmd.subcommand == "ping"
+    assert cmd.args == ["hello"]
+
+
+def test_repr_with_context():
+    """Test __repr__ with context."""
+    context = CLIContext()
+    cmd = CLICommand("ping hello", use_python=True, context=context)
+
+    repr_str = repr(cmd)
+
+    assert "CLICommand" in repr_str
+    assert "ping hello" in repr_str
+    assert "use_python=True" in repr_str
+    assert "context=True" in repr_str
