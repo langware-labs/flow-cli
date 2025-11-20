@@ -3,29 +3,30 @@
 import os
 import sys
 from pathlib import Path
+from cli_command import CLICommand
 from cli_context import CLIContext, ClaudeScope
 from commands.setup_cmd.claude_code_setup.hook_parser import HookParser
+from commands.setup_cmd.claude_code_setup.claude_hooks import setHook, removeHook
 
 
-def setup_claude_code(context: CLIContext):
+def setup_claude_code(cmd: CLICommand):
     """
     Run the setup specific to Claude Code.
 
     Args:
-        context: CLI context with path information
+        cmd: CLICommand with context and command details
 
     Returns:
         str: Setup result message
     """
     print("Setting up Claude Code integration...")
 
+    context = cmd.context
+
     # Determine the scope to use
     scope = _determine_scope(context)
     print(f"Using scope: {scope.value} - {context.get_scope_description(scope)}")
     print(f"Settings path: {context.get_claude_settings_path(scope)}")
-
-    # Initialize the hook parser with the appropriate scope
-    hook_parser = HookParser(context=context, scope=scope)
 
     print("Configuring Claude Code hooks...")
 
@@ -41,18 +42,19 @@ def setup_claude_code(context: CLIContext):
     # Make the hook script executable
     os.chmod(hook_script_path, 0o755)
 
-    # Add UserPromptSubmit hook (no matcher needed for this event)
-    hook_parser.add_hook(
+    # Add UserPromptSubmit hook using the new setHook function
+    success = setHook(
+        scope=scope,
         event_name="UserPromptSubmit",
         matcher=None,  # UserPromptSubmit doesn't use matchers
-        hook_type="command",
-        command=str(hook_script_path)
+        cmd=str(hook_script_path),
+        context=context
     )
 
-    # Save the hooks configuration
-    hook_parser.save_hooks()
-
-    print(f"✓ Hook configured: UserPromptSubmit -> {hook_script_path}")
+    if success:
+        print(f"✓ Hook configured: UserPromptSubmit -> {hook_script_path}")
+    else:
+        print(f"⚠ Failed to configure hook")
     print("✓ Claude Code setup complete!")
     print("\n" + "="*50)
     print("🎉 Restart Claude and type 'hello' to start :)")

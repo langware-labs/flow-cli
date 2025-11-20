@@ -106,7 +106,7 @@ def run_setup(agent_name, cmd: CLICommand):
     # Call agent-specific setup based on the normalized type
     if agent_type == AgentType.CLAUDE_CODE:
         print(f"\nRecognized as: {agent_type.value}")
-        setup_claude_code(cmd.context)
+        setup_claude_code(cmd)
     elif agent_type == AgentType.GITHUB_COPILOT:
         print(f"\nRecognized as: {agent_type.value}")
         print("GitHub Copilot setup not yet implemented")
