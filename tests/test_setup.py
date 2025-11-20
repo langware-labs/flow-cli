@@ -76,7 +76,7 @@ def test_server():
     # Server will be automatically stopped when test ends (daemon thread)
 
 
-def test_ping():
+def test_ping_mock_claude():
     """
     Comprehensive test for the ping feedback loop:
     1. Start internal server as interceptor

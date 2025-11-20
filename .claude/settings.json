@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/shlom/Documents/dev/flow-cli/commands/setup_cmd/claude_code_setup/flow_prompt_hook.py"
+          }
+        ]
+      }
+    ]
+  }
+}
