@@ -2,10 +2,41 @@
 
 import sys
 import requests
+from enum import Enum
 from cli_context import CLIContext
+from cli_command import CLICommand
 from config_manager import list_config, set_config_value, remove_config_value, setup_defaults, get_config_value
 from commands.setup_cmd.setup_cmd import run_setup
 from commands.prompt_cmd import run_prompt_command
+
+
+class FlowCommand(Enum):
+    """Enumeration of available flow CLI commands."""
+    CONFIG = "config"
+    SETUP = "setup"
+    PROMPT = "prompt"
+    PING = "ping"
+
+    @classmethod
+    def from_string(cls, command_str: str):
+        """
+        Get FlowCommand from string.
+
+        Args:
+            command_str: Command string to parse
+
+        Returns:
+            FlowCommand enum value or None if not found
+        """
+        try:
+            return cls(command_str)
+        except ValueError:
+            return None
+
+    @classmethod
+    def list_commands(cls):
+        """Get list of all available command names."""
+        return [cmd.value for cmd in cls]
 
 
 def main():
@@ -19,19 +50,24 @@ def main():
         print("Hello flowpad")
         return
 
-    command = sys.argv[1]
+    # Parse command using CLICommand
+    command_str = " ".join(sys.argv[1:])
+    cli_cmd = CLICommand(command_str)
 
-    if command == "config":
+    # Get the FlowCommand enum
+    flow_command = FlowCommand.from_string(cli_cmd.subcommand) if cli_cmd.subcommand else None
+
+    if flow_command == FlowCommand.CONFIG:
         handle_config_command()
-    elif command == "setup":
+    elif flow_command == FlowCommand.SETUP:
         handle_setup_command(context)
-    elif command == "prompt":
+    elif flow_command == FlowCommand.PROMPT:
         handle_prompt_command()
-    elif command == "ping":
+    elif flow_command == FlowCommand.PING:
         handle_ping_command()
     else:
-        print(f"Unknown command: {command}")
-        print("Available commands: config, setup, prompt, ping")
+        print(f"Unknown command: {cli_cmd.subcommand}")
+        print(f"Available commands: {', '.join(FlowCommand.list_commands())}")
 
 
 def handle_setup_command(context: CLIContext):
