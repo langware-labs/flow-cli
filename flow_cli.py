@@ -1,81 +1,59 @@
 #!/usr/bin/env python3
 
-import sys
+import typer
 import requests
-from enum import Enum
+from typing import Optional
+from typing_extensions import Annotated
 from cli_context import CLIContext
 from cli_command import CLICommand
 from config_manager import list_config, set_config_value, remove_config_value, setup_defaults, get_config_value
 from commands.setup_cmd.setup_cmd import run_setup
 from commands.prompt_cmd import run_prompt_command
 
+# Create Typer app
+app = typer.Typer(
+    name="flow",
+    help="Flow CLI tool for flowpad",
+    add_completion=False
+)
 
-class FlowCommand(Enum):
-    """Enumeration of available flow CLI commands."""
-    CONFIG = "config"
-    SETUP = "setup"
-    PROMPT = "prompt"
-    PING = "ping"
-
-    @classmethod
-    def from_string(cls, command_str: str):
-        """
-        Get FlowCommand from string.
-
-        Args:
-            command_str: Command string to parse
-
-        Returns:
-            FlowCommand enum value or None if not found
-        """
-        try:
-            return cls(command_str)
-        except ValueError:
-            return None
-
-    @classmethod
-    def list_commands(cls):
-        """Get list of all available command names."""
-        return [cmd.value for cmd in cls]
+# Global context (initialized once)
+_context: Optional[CLIContext] = None
 
 
-def main():
-    # Initialize CLI context
-    context = CLIContext()
+def get_context() -> CLIContext:
+    """Get or initialize the CLI context."""
+    global _context
+    if _context is None:
+        _context = CLIContext()
+    return _context
 
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context):
+    """
+    Flow CLI - Main entry point.
+
+    If no command is provided, prints welcome message.
+    """
     # Ensure config defaults are set
     setup_defaults()
 
-    if len(sys.argv) < 2:
-        print("Hello flowpad")
-        return
-
-    # Parse command using CLICommand
-    command_str = " ".join(sys.argv[1:])
-    cli_cmd = CLICommand(command_str)
-
-    # Get the FlowCommand enum
-    flow_command = FlowCommand.from_string(cli_cmd.subcommand) if cli_cmd.subcommand else None
-
-    if flow_command == FlowCommand.CONFIG:
-        handle_config_command()
-    elif flow_command == FlowCommand.SETUP:
-        handle_setup_command(context)
-    elif flow_command == FlowCommand.PROMPT:
-        handle_prompt_command()
-    elif flow_command == FlowCommand.PING:
-        handle_ping_command()
-    else:
-        print(f"Unknown command: {cli_cmd.subcommand}")
-        print(f"Available commands: {', '.join(FlowCommand.list_commands())}")
+    # If no subcommand was invoked, show welcome message
+    if ctx.invoked_subcommand is None:
+        typer.echo("Hello flowpad")
 
 
-def handle_setup_command(context: CLIContext):
-    if len(sys.argv) < 3:
-        print("Usage: flow setup <agent_name>")
-        return
+@app.command()
+def setup(
+    agent_name: Annotated[str, typer.Argument(help="Name of the coding agent (e.g., claude-code)")],
+):
+    """
+    Setup flowpad for a specific coding agent.
 
-    agent_name = sys.argv[2]
+    Example: flow setup claude-code
+    """
+    context = get_context()
 
     # Set first_time_prompt flag when running setup
     set_config_value("first_time_prompt", "true")
@@ -83,28 +61,28 @@ def handle_setup_command(context: CLIContext):
     run_setup(agent_name, context)
 
 
-def handle_prompt_command():
-    if len(sys.argv) < 3:
-        # No prompt provided, just exit silently
-        return
-
-    # Get the prompt from all remaining arguments (in case it has spaces)
-    user_prompt = " ".join(sys.argv[2:])
-    run_prompt_command(user_prompt)
-
-
-def handle_ping_command():
+@app.command()
+def prompt(
+    prompt_text: Annotated[Optional[str], typer.Argument(help="Prompt text to process")] = None
+):
     """
-    Handle the ping command to test hook integration.
-    Sends a ping string to the local server.
+    Process a prompt command.
+
+    Example: flow prompt "analyze this code"
     """
-    if len(sys.argv) < 3:
-        print("Usage: flow ping <ping-string>")
-        return
+    if prompt_text:
+        run_prompt_command(prompt_text)
 
-    # Get the ping string from all remaining arguments
-    ping_str = " ".join(sys.argv[2:])
 
+@app.command()
+def ping(
+    ping_str: Annotated[str, typer.Argument(help="Ping string to send")],
+):
+    """
+    Send a ping to the local server for testing hook integration.
+
+    Example: flow ping hello
+    """
     # Get the local server port from config
     setup_defaults()
     port_str = get_config_value("local_cli_port")
@@ -116,68 +94,76 @@ def handle_ping_command():
         response = requests.get(url, params={"ping_str": ping_str}, timeout=5)
 
         if response.status_code == 200:
-            print(f"Ping sent successfully: {ping_str}")
+            typer.echo(f"Ping sent successfully: {ping_str}")
         else:
-            print(f"Ping failed with status {response.status_code}")
+            typer.echo(f"Ping failed with status {response.status_code}", err=True)
+            raise typer.Exit(1)
     except requests.exceptions.RequestException as e:
-        print(f"Error sending ping: {e}")
+        typer.echo(f"Error sending ping: {e}", err=True)
+        raise typer.Exit(1)
 
 
-def handle_config_command():
-    if len(sys.argv) < 3:
-        print("Usage: flow config <list|set|remove>")
-        return
+# Config command group
+config_app = typer.Typer(help="Manage configuration")
+app.add_typer(config_app, name="config")
 
-    subcommand = sys.argv[2]
 
-    if subcommand == "list":
-        config = list_config()
-        if not config:
-            print("No configuration values set.")
-        else:
-            for key, value in config.items():
-                print(f"{key}={value}")
-
-    elif subcommand == "set":
-        if len(sys.argv) < 4:
-            print("Usage: flow config set key=value")
-            return
-
-        try:
-            key_value = sys.argv[3]
-            if "=" not in key_value:
-                print("Error: Expected format key=value")
-                return
-
-            key, value = key_value.split("=", 1)
-            key = key.strip()
-            value = value.strip()
-
-            if not key:
-                print("Error: Key cannot be empty")
-                return
-
-            set_config_value(key, value)
-            print(f"Set {key}={value}")
-
-        except Exception as e:
-            print(f"Error setting config: {e}")
-
-    elif subcommand == "remove":
-        if len(sys.argv) < 4:
-            print("Usage: flow config remove key")
-            return
-
-        key = sys.argv[3]
-        if remove_config_value(key):
-            print(f"Removed {key}")
-        else:
-            print(f"Key '{key}' not found")
-
+@config_app.command("list")
+def config_list():
+    """List all configuration values."""
+    config = list_config()
+    if not config:
+        typer.echo("No configuration values set.")
     else:
-        print(f"Unknown config subcommand: {subcommand}")
-        print("Available subcommands: list, set, remove")
+        for key, value in config.items():
+            typer.echo(f"{key}={value}")
+
+
+@config_app.command("set")
+def config_set(
+    key_value: Annotated[str, typer.Argument(help="Configuration in format key=value")]
+):
+    """
+    Set a configuration value.
+
+    Example: flow config set timeout=30
+    """
+    if "=" not in key_value:
+        typer.echo("Error: Expected format key=value", err=True)
+        raise typer.Exit(1)
+
+    key, value = key_value.split("=", 1)
+    key = key.strip()
+    value = value.strip()
+
+    if not key:
+        typer.echo("Error: Key cannot be empty", err=True)
+        raise typer.Exit(1)
+
+    set_config_value(key, value)
+    typer.echo(f"Set {key}={value}")
+
+
+@config_app.command("remove")
+def config_remove(
+    key: Annotated[str, typer.Argument(help="Configuration key to remove")]
+):
+    """
+    Remove a configuration value.
+
+    Example: flow config remove timeout
+    """
+    if remove_config_value(key):
+        typer.echo(f"Removed {key}")
+    else:
+        typer.echo(f"Key '{key}' not found", err=True)
+        raise typer.Exit(1)
+
+
+def cli_main():
+    """Entry point that can be used with CLICommand."""
+    app()
 
 
 if __name__ == "__main__":
-    main()
+    app()

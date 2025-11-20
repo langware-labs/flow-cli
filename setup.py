@@ -12,6 +12,7 @@ setup(
         "requests",
         "fastapi",
         "uvicorn",
+        "typer>=0.9.0",
     ],
     extras_require={
         "dev": [
@@ -21,7 +22,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "flow=flow_cli:main",
+            "flow=flow_cli:cli_main",
         ],
     },
     python_requires=">=3.7",
