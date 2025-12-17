@@ -422,10 +422,18 @@ def hooks_set(
     scope: Annotated[str, typer.Option(help="Scope for hooks: user, project, or local")] = "user",
 ):
     """
-    Set all standard Flow hooks in Claude Code settings.
+    Set all Flow hooks in Claude Code settings.
 
-    Configures the UserPromptSubmit hook to call the flow prompt hook script.
+    Configures hooks for all Claude Code events to report to flow trace.
     Default scope is 'user' (applies globally to all projects).
+
+    Events configured:
+    - UserPromptSubmit: User sends a prompt
+    - PreToolUse: Before a tool is executed
+    - PostToolUse: After a tool is executed
+    - Notification: Claude sends a notification
+    - Stop: Session stops
+    - SubagentStop: Subagent stops
 
     Examples:
       flow hooks set
@@ -459,25 +467,59 @@ def hooks_set(
         typer.echo("Run 'flow setup claude-code' first to create the hook script.", err=True)
         raise typer.Exit(1)
 
-    # Create flow metadata (replaces existing flow hooks)
-    flow_metadata = FlowHookMetadata.create(name="prompt")
+    # All Claude Code hook events to configure
+    # Events without matchers
+    events_no_matcher = [
+        "UserPromptSubmit",
+        "Notification",
+        "Stop",
+        "SubagentStop",
+    ]
 
-    # Set the UserPromptSubmit hook with flow metadata
-    success = setHook(
-        scope=claude_scope,
-        event_name="UserPromptSubmit",
-        matcher=None,
-        cmd=str(hook_script_path),
-        context=context,
-        flow_metadata=flow_metadata
-    )
+    # Events with matchers (use "*" to match all tools)
+    events_with_matcher = [
+        "PreToolUse",
+        "PostToolUse",
+    ]
 
-    if success:
-        typer.echo(f"✓ Hook set: UserPromptSubmit -> {hook_script_path}")
-        typer.echo(f"✓ Settings file: {context.get_claude_settings_path(claude_scope)}")
-    else:
-        typer.echo("Error: Failed to set hook", err=True)
-        raise typer.Exit(1)
+    success_count = 0
+
+    # Set hooks for events without matchers
+    for event_name in events_no_matcher:
+        flow_metadata = FlowHookMetadata.create(name=event_name.lower())
+        success = setHook(
+            scope=claude_scope,
+            event_name=event_name,
+            matcher=None,
+            cmd=str(hook_script_path),
+            context=context,
+            flow_metadata=flow_metadata
+        )
+        if success:
+            typer.echo(f"✓ {event_name}")
+            success_count += 1
+        else:
+            typer.echo(f"✗ {event_name} (failed)", err=True)
+
+    # Set hooks for events with matchers (match all tools)
+    for event_name in events_with_matcher:
+        flow_metadata = FlowHookMetadata.create(name=event_name.lower())
+        success = setHook(
+            scope=claude_scope,
+            event_name=event_name,
+            matcher="*",  # Match all tools
+            cmd=str(hook_script_path),
+            context=context,
+            flow_metadata=flow_metadata
+        )
+        if success:
+            typer.echo(f"✓ {event_name} (matcher: *)")
+            success_count += 1
+        else:
+            typer.echo(f"✗ {event_name} (failed)", err=True)
+
+    typer.echo(f"\n✓ {success_count} hooks configured")
+    typer.echo(f"✓ Settings file: {context.get_claude_settings_path(claude_scope)}")
 
 
 @hooks_app.command("clear")
