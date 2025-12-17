@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from cli_context import CLIContext, ClaudeScope
 from commands.setup_cmd.claude_code_setup.claude_hooks import setHook, removeHook
+from commands.setup_cmd.claude_code_setup.flow_metadata import FlowHookMetadata
 
 
 def test_set_hook_user_scope():
@@ -101,13 +102,15 @@ def test_remove_hook_flow_command():
 
         context = CLIContext(working_dir=str(tmp_path))
 
-        # First, set a hook
+        # First, set a hook with flow metadata (so it's flow-managed)
+        flow_metadata = FlowHookMetadata.create(name="test")
         setHook(
             scope=ClaudeScope.PROJECT,
             event_name="UserPromptSubmit",
             matcher=None,
             cmd="flow prompt test",
-            context=context
+            context=context,
+            flow_metadata=flow_metadata
         )
 
         # Now remove it

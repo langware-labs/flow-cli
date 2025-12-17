@@ -84,6 +84,12 @@ class HookParser:
         # Create directory if it doesn't exist
         self.hooks_file_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Clean up invalid null values (Claude expects arrays, not null)
+        hooks = self.settings_data.get("hooks", {})
+        keys_to_remove = [k for k, v in hooks.items() if v is None]
+        for k in keys_to_remove:
+            del hooks[k]
+
         with open(self.hooks_file_path, 'w') as f:
             json.dump(self.settings_data, f, indent=2)
 
