@@ -53,12 +53,17 @@ def test_hooks_lifecycle_with_cli_commands(local_server, claude_settings, monkey
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
         return result.stdout, result.stderr, result.returncode
 
-    def get_prompts():
-        """Get prompts received by server."""
-        return local_server.get_prompts()
+    def get_hook_reports():
+        """Get hook reports from server."""
+        import requests
+        try:
+            resp = requests.get(f"http://127.0.0.1:{port}/api/hooks/output", timeout=5)
+            return resp.json().get("outputs", []) if resp.status_code == 200 else []
+        except:
+            return []
 
-    # Get initial prompt count
-    initial_count = len(get_prompts())
+    # Get initial hook report count
+    initial_count = len(get_hook_reports())
 
     # =========================================================================
     # STEP 1: Setup hooks using setHook with wrapper script
@@ -70,7 +75,7 @@ def test_hooks_lifecycle_with_cli_commands(local_server, claude_settings, monkey
     from commands.setup_cmd.claude_code_setup.claude_hooks import setHook
     from cli_context import ClaudeScope
 
-    # Create Python wrapper script that sets LOCAL_SERVER_PORT before calling flow prompt
+    # Create Python wrapper script that calls `flow hooks report` (our CLI command)
     hook_wrapper = workdir / "hook_wrapper.py"
     hook_wrapper.write_text(f'''#!/usr/bin/env python3
 import json
@@ -80,17 +85,20 @@ import os
 
 try:
     input_data = json.load(sys.stdin)
-    user_prompt = input_data.get("prompt", "")
 
     env = os.environ.copy()
     env["LOCAL_SERVER_PORT"] = "{port}"
 
-    subprocess.run(
-        ["flow", "prompt", user_prompt],
-        capture_output=True,
+    # Use flow hooks report command to send to server
+    proc = subprocess.Popen(
+        ["flow", "hooks", "report"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         env=env
     )
+    proc.communicate(input=json.dumps(input_data))
 except:
     pass
 sys.exit(0)
@@ -126,18 +134,18 @@ sys.exit(0)
     print(f"✓ Claude called")
 
     # =========================================================================
-    # STEP 3: Validate server received prompt
+    # STEP 3: Validate server received hook report
     # =========================================================================
-    print(f"\n[Step 3] Validating server received prompt...")
+    print(f"\n[Step 3] Validating server received hook report...")
 
-    prompts_after_call1 = get_prompts()
-    count_after_call1 = len(prompts_after_call1)
-    new_prompts = count_after_call1 - initial_count
+    reports_after_call1 = get_hook_reports()
+    count_after_call1 = len(reports_after_call1)
+    new_reports = count_after_call1 - initial_count
 
-    print(f"  Prompts: {initial_count} -> {count_after_call1} (+{new_prompts})")
+    print(f"  Reports: {initial_count} -> {count_after_call1} (+{new_reports})")
 
-    assert new_prompts > 0, f"Expected prompts from hook, got 0 new prompts"
-    print(f"✓ Hook reported prompt to server")
+    assert new_reports > 0, f"Expected hook reports, got 0 new reports"
+    print(f"✓ Hook reported to server")
 
     # =========================================================================
     # STEP 4: Clear hooks using HookParser (since hook is a wrapper script, not flow command)
@@ -161,7 +169,7 @@ sys.exit(0)
     print(f"✓ Hooks cleared and verified via 'flow hooks list'")
 
     # Record count before second call
-    count_before_call2 = len(get_prompts())
+    count_before_call2 = len(get_hook_reports())
 
     # =========================================================================
     # STEP 5: Call Claude (without hooks)
@@ -181,17 +189,17 @@ sys.exit(0)
     # =========================================================================
     # STEP 6: Validate nothing was reported
     # =========================================================================
-    print(f"\n[Step 6] Validating no new prompts...")
+    print(f"\n[Step 6] Validating no new reports...")
 
-    prompts_after_call2 = get_prompts()
-    count_after_call2 = len(prompts_after_call2)
-    new_prompts_after_clear = count_after_call2 - count_before_call2
+    reports_after_call2 = get_hook_reports()
+    count_after_call2 = len(reports_after_call2)
+    new_reports_after_clear = count_after_call2 - count_before_call2
 
-    print(f"  Prompts: {count_before_call2} -> {count_after_call2} (+{new_prompts_after_clear})")
+    print(f"  Reports: {count_before_call2} -> {count_after_call2} (+{new_reports_after_clear})")
 
-    assert new_prompts_after_clear == 0, \
-        f"Expected 0 new prompts after clear, got {new_prompts_after_clear}"
-    print(f"✓ No prompts reported after clear")
+    assert new_reports_after_clear == 0, \
+        f"Expected 0 new reports after clear, got {new_reports_after_clear}"
+    print(f"✓ No reports after clear")
 
     print(f"\n{'='*60}")
     print(f"✅ TEST PASSED")

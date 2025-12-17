@@ -14,7 +14,7 @@ import shutil
 from pathlib import Path
 from typing import List, Dict, Any
 from config_manager import get_config_value, setup_defaults
-from local_server.reporters import BufferReporter, WebSocketReporter
+from local_server.reporters import BufferReporter, WebSocketReporter, ReporterRegistry
 
 app = FastAPI()
 
@@ -47,6 +47,11 @@ session_lock = threading.Lock()
 # Hook reporters
 buffer_reporter = BufferReporter(max_size=100)
 ws_reporter = WebSocketReporter()
+
+# Reporter registry - manages active reporters
+reporter_registry = ReporterRegistry()
+reporter_registry.add(buffer_reporter)
+reporter_registry.add(ws_reporter)
 
 
 @app.get("/post_login", response_class=HTMLResponse)
@@ -651,9 +656,7 @@ async def report_hook(data: dict):
     """
     Receive hook event data from flow hooks report command.
 
-    This endpoint receives hook events and:
-    1. Stores them in the buffer via BufferReporter
-    2. Broadcasts to connected clients via WebSocketReporter
+    This endpoint receives hook events and broadcasts to all registered reporters.
 
     Args:
         data: Hook event data (JSON from stdin)
@@ -666,9 +669,8 @@ async def report_hook(data: dict):
         if "timestamp" not in data:
             data["timestamp"] = time.time()
 
-        # Report to both reporters
-        await buffer_reporter.report(data)
-        await ws_reporter.report(data)
+        # Report to all registered reporters
+        await reporter_registry.report_all(data)
 
         return JSONResponse(content={
             "success": True,

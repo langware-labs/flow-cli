@@ -1,12 +1,17 @@
 from setuptools import setup, find_packages
 
+# Read version from _version.py
+version = {}
+with open("_version.py") as f:
+    exec(f.read(), version)
+
 setup(
     name="flow-cli",
-    version="0.1.0",
+    version=version["__version__"],
     description="Flow CLI tool for flowpad",
     author="Langweare Labs",
     packages=find_packages() + ["py-sdk"],
-    py_modules=["flow_cli", "config_manager", "cli_context", "cli_command", "env_loader", "auth", "app_config"],
+    py_modules=["flow_cli", "config_manager", "cli_context", "cli_command", "env_loader", "auth", "app_config", "_version"],
     install_requires=[
         "platformdirs",
         "requests",

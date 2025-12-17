@@ -6,6 +6,7 @@ import requests
 import threading
 from typing import Optional
 from typing_extensions import Annotated
+from _version import __version__
 from cli_context import CLIContext, ClaudeScope
 from cli_command import CLICommand
 from config_manager import list_config, set_config_value, remove_config_value, setup_defaults, get_config_value
@@ -41,14 +42,14 @@ def main(ctx: typer.Context):
     """
     Flow CLI - Main entry point.
 
-    If no command is provided, prints welcome message.
+    If no command is provided, prints version.
     """
     # Ensure config defaults are set
     setup_defaults()
 
-    # If no subcommand was invoked, show welcome message
+    # If no subcommand was invoked, show version
     if ctx.invoked_subcommand is None:
-        typer.echo("Hello flowpad")
+        typer.echo(f"flow {__version__}")
 
 
 @app.command()
@@ -155,6 +156,57 @@ def start():
             time.sleep(1)
     except KeyboardInterrupt:
         typer.echo("\n\n✓ Server stopped")
+        raise typer.Exit(0)
+
+
+@app.command()
+def trace():
+    """
+    Start the server and trace hook events in real-time.
+
+    Displays hook events with colored output as they occur.
+    Use Ctrl+C to stop.
+
+    Usage:
+      Terminal 1: flow trace
+      Terminal 2: flow hooks set && claude -p "hello" && flow hooks clear
+    """
+    import time
+
+    from local_server.server import start_server, reporter_registry
+    from local_server.reporters import PrintReporter
+
+    port = int(os.environ.get("LOCAL_SERVER_PORT", "9007"))
+
+    typer.echo(f"Starting Flow trace server on port {port}...")
+
+    # Create and register print reporter
+    print_reporter = PrintReporter()
+    reporter_registry.add(print_reporter)
+
+    # Start server in background thread
+    server_thread = threading.Thread(
+        target=start_server,
+        args=(port,),
+        daemon=True
+    )
+    server_thread.start()
+
+    # Give server time to start
+    time.sleep(1)
+
+    typer.echo(f"✓ Server started on http://127.0.0.1:{port}")
+    typer.echo(f"\n\033[2mTip: Run 'flow hooks set' in another terminal to enable hooks\033[0m\n")
+    typer.echo("Waiting for hook events (Ctrl+C to stop)\n")
+
+    try:
+        # Keep main thread alive
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        # Cleanup
+        reporter_registry.remove(print_reporter)
+        typer.echo("\n\n✓ Trace stopped")
         raise typer.Exit(0)
 
 
@@ -382,6 +434,7 @@ def hooks_set(
     """
     from commands.setup_cmd.claude_code_setup.claude_hooks import setHook
     from commands.setup_cmd.claude_code_setup.setup_claude import _get_hook_script_path
+    from commands.setup_cmd.claude_code_setup.flow_metadata import FlowHookMetadata
 
     try:
         claude_scope = _parse_scope(scope)
@@ -406,13 +459,17 @@ def hooks_set(
         typer.echo("Run 'flow setup claude-code' first to create the hook script.", err=True)
         raise typer.Exit(1)
 
-    # Set the UserPromptSubmit hook
+    # Create flow metadata (replaces existing flow hooks)
+    flow_metadata = FlowHookMetadata.create(name="prompt")
+
+    # Set the UserPromptSubmit hook with flow metadata
     success = setHook(
         scope=claude_scope,
         event_name="UserPromptSubmit",
         matcher=None,
         cmd=str(hook_script_path),
-        context=context
+        context=context,
+        flow_metadata=flow_metadata
     )
 
     if success:
@@ -557,6 +614,11 @@ def hooks_list(
     for event in events:
         typer.echo(f"\nEvent: {event}")
         event_hooks = hook_parser.get_event_hooks(event)
+
+        # Handle null/None values in hooks
+        if event_hooks is None:
+            typer.echo("  (disabled/null)")
+            continue
 
         for entry in event_hooks:
             matcher = entry.get("matcher")

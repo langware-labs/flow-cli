@@ -109,7 +109,7 @@ class HookParser:
         return self.settings_data["hooks"].get(event_name, [])
 
     def add_hook(self, event_name: str, matcher: Optional[str], hook_type: str,
-                 command: str, **kwargs):
+                 command: str, flow_metadata: Optional[Dict[str, Any]] = None, **kwargs):
         """
         Add a new hook for an event.
 
@@ -119,6 +119,9 @@ class HookParser:
                     Use None for events like UserPromptSubmit that don't use matchers.
             hook_type: The type of hook (e.g., "command")
             command: The command to execute
+            flow_metadata: Optional dict with flow-specific metadata to store in the entry.
+                          If provided, marks this as a flow-managed hook.
+                          Example: {"managed": True, "version": "1.0", "name": "prompt"}
             **kwargs: Additional hook properties
         """
         if event_name not in self.settings_data["hooks"]:
@@ -133,21 +136,32 @@ class HookParser:
 
         # Events like UserPromptSubmit don't use matchers
         if matcher is None:
-            # Find existing entry without matcher
+            # Find existing flow entry without matcher (if flow_metadata provided)
+            # or find any entry without matcher (if no flow_metadata)
             matcher_entry = None
             for entry in self.settings_data["hooks"][event_name]:
                 if "matcher" not in entry:
-                    matcher_entry = entry
-                    break
+                    # If we're adding a flow hook, look for existing flow entry
+                    if flow_metadata and "flow" in entry:
+                        matcher_entry = entry
+                        break
+                    elif not flow_metadata and "flow" not in entry:
+                        matcher_entry = entry
+                        break
 
             if matcher_entry:
                 # Add to existing entry
                 matcher_entry["hooks"].append(hook_obj)
+                # Update flow metadata if provided
+                if flow_metadata:
+                    matcher_entry["flow"] = flow_metadata
             else:
                 # Create new entry without matcher
                 new_entry = {
                     "hooks": [hook_obj]
                 }
+                if flow_metadata:
+                    new_entry["flow"] = flow_metadata
                 self.settings_data["hooks"][event_name].append(new_entry)
         else:
             # Check if matcher already exists
@@ -160,12 +174,17 @@ class HookParser:
             if matcher_entry:
                 # Add to existing matcher
                 matcher_entry["hooks"].append(hook_obj)
+                # Update flow metadata if provided
+                if flow_metadata:
+                    matcher_entry["flow"] = flow_metadata
             else:
                 # Create new matcher entry
                 new_entry = {
                     "matcher": matcher,
                     "hooks": [hook_obj]
                 }
+                if flow_metadata:
+                    new_entry["flow"] = flow_metadata
                 self.settings_data["hooks"][event_name].append(new_entry)
 
     def remove_hook(self, event_name: str, matcher: Optional[str] = None,
@@ -304,6 +323,81 @@ class HookParser:
                 return entry.get("hooks", [])
 
         return None
+
+    def is_flow_managed(self, entry: Dict[str, Any]) -> bool:
+        """
+        Check if a hook entry is managed by flow.
+
+        Args:
+            entry: A hook entry from the hooks list
+
+        Returns:
+            True if the entry has flow metadata, False otherwise
+        """
+        return "flow" in entry
+
+    def get_flow_entries(self, event_name: str) -> List[Dict[str, Any]]:
+        """
+        Get all flow-managed entries for an event.
+
+        Args:
+            event_name: The name of the event
+
+        Returns:
+            List of entries that have flow metadata
+        """
+        if event_name not in self.settings_data["hooks"]:
+            return []
+
+        event_hooks = self.settings_data["hooks"].get(event_name)
+        if event_hooks is None:
+            return []
+
+        return [entry for entry in event_hooks if self.is_flow_managed(entry)]
+
+    def remove_flow_hooks(self, event_name: str, matcher: Optional[str] = None) -> bool:
+        """
+        Remove all flow-managed hooks for an event.
+
+        Only removes entries that have the "flow" metadata section.
+        Non-flow hooks are left untouched.
+
+        Args:
+            event_name: The name of the event
+            matcher: Optional matcher pattern. If provided, only removes flow hooks
+                    with this matcher.
+
+        Returns:
+            True if any flow hooks were removed, False otherwise
+        """
+        if event_name not in self.settings_data["hooks"]:
+            return False
+
+        event_hooks = self.settings_data["hooks"].get(event_name)
+        if event_hooks is None:
+            return False
+
+        original_len = len(event_hooks)
+
+        # Filter out flow-managed entries (optionally matching a specific matcher)
+        if matcher is not None:
+            self.settings_data["hooks"][event_name] = [
+                entry for entry in event_hooks
+                if not (self.is_flow_managed(entry) and entry.get("matcher") == matcher)
+            ]
+        else:
+            self.settings_data["hooks"][event_name] = [
+                entry for entry in event_hooks
+                if not self.is_flow_managed(entry)
+            ]
+
+        removed = len(self.settings_data["hooks"][event_name]) < original_len
+
+        # Clean up empty event entries
+        if not self.settings_data["hooks"][event_name]:
+            del self.settings_data["hooks"][event_name]
+
+        return removed
 
     def __str__(self) -> str:
         """String representation of the hooks configuration."""

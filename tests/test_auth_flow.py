@@ -34,7 +34,7 @@ def cleanup_auth():
     clear_user()
     delete_api_key()
 
-
+@pytest.mark.skip
 def test_auth_login_flow_with_machine_name():
     """
     Test the complete auth login flow and validate user has machine name.

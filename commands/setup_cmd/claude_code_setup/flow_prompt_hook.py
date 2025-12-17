@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Claude Code hook script for UserPromptSubmit event.
-Receives user prompt via stdin and forwards to 'flow prompt' command.
+Receives hook data via stdin and forwards to 'flow hooks report' command.
 """
 
 import json
@@ -15,20 +15,24 @@ def main():
         # Read the hook input from stdin
         input_data = json.load(sys.stdin)
 
-        # Extract the user's prompt
-        user_prompt = input_data.get("prompt", "")
+        # Add hook_type if not present (this script is for UserPromptSubmit)
+        if "hook_type" not in input_data:
+            input_data["hook_type"] = "UserPromptSubmit"
 
-        # Run the flow prompt command (pass environment for LOCAL_SERVER_PORT etc.)
-        result = subprocess.run(
-            ["flow", "prompt", user_prompt],
-            capture_output=True,
+        # Run the flow hooks report command (pass environment for LOCAL_SERVER_PORT etc.)
+        proc = subprocess.Popen(
+            ["flow", "hooks", "report"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             env=os.environ.copy()
         )
+        stdout, stderr = proc.communicate(input=json.dumps(input_data))
 
         # Print any output from the flow command
-        if result.stdout:
-            print(result.stdout, end='')
+        if stdout:
+            print(stdout, end='')
 
         # Exit with 0 to allow the prompt to proceed
         sys.exit(0)

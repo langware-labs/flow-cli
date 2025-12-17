@@ -5,9 +5,9 @@ Provides high-level API for setting and removing hooks.
 """
 
 from typing import Optional
-from cli_command import CLICommand
 from cli_context import CLIContext, ClaudeScope
 from commands.setup_cmd.claude_code_setup.hook_parser import HookParser
+from commands.setup_cmd.claude_code_setup.flow_metadata import FlowHookMetadata
 
 
 def setHook(
@@ -15,10 +15,14 @@ def setHook(
     event_name: str,
     matcher: Optional[str],
     cmd: str,
-    context: Optional[CLIContext] = None
+    context: Optional[CLIContext] = None,
+    flow_metadata: Optional[FlowHookMetadata] = None
 ) -> bool:
     """
     Set a hook for a specific event in Claude Code settings.
+
+    If flow_metadata is provided, the hook is marked as flow-managed.
+    If a flow-managed hook already exists for this event/matcher, it is replaced.
 
     Args:
         scope: The Claude scope (PROJECT or USER)
@@ -26,13 +30,14 @@ def setHook(
         matcher: Optional matcher pattern (None for events that don't use matchers)
         cmd: The command to execute (e.g., "flow ping hello")
         context: Optional CLIContext. If not provided, creates a new one.
+        flow_metadata: Optional FlowHookMetadata. If provided, marks as flow-managed.
 
     Returns:
         bool: True if hook was set successfully, False otherwise
 
     Example:
-        setHook(ClaudeScope.PROJECT, "UserPromptSubmit", None, "flow prompt")
-        setHook(ClaudeScope.USER, "tool_use", "bash", "flow track bash")
+        metadata = FlowHookMetadata.create(name="prompt")
+        setHook(ClaudeScope.USER, "UserPromptSubmit", None, cmd, flow_metadata=metadata)
     """
     try:
         # Create context if not provided
@@ -42,12 +47,17 @@ def setHook(
         # Initialize hook parser with the specified scope
         hook_parser = HookParser(context=context, scope=scope)
 
+        # If flow_metadata provided, remove existing flow hooks first (replace behavior)
+        if flow_metadata:
+            hook_parser.remove_flow_hooks(event_name, matcher)
+
         # Add the hook
         hook_parser.add_hook(
             event_name=event_name,
             matcher=matcher,
             hook_type="command",
-            command=cmd
+            command=cmd,
+            flow_metadata=flow_metadata.to_dict() if flow_metadata else None
         )
 
         # Save the hooks configuration
@@ -67,10 +77,10 @@ def removeHook(
     context: Optional[CLIContext] = None
 ) -> bool:
     """
-    Remove a hook only if the command is a flow command.
+    Remove flow-managed hooks for an event.
 
-    This function validates that the hook's command is a flow CLI command
-    before removing it, to avoid accidentally removing non-flow hooks.
+    Only removes hooks that have the "flow" metadata section.
+    Non-flow hooks are left untouched.
 
     Args:
         scope: The Claude scope (PROJECT or USER)
@@ -93,67 +103,25 @@ def removeHook(
         # Initialize hook parser with the specified scope
         hook_parser = HookParser(context=context, scope=scope)
 
-        # Get the hook details to check if it's a flow command
-        hooks = hook_parser.get_hook_details(event_name, matcher)
+        # Get flow-managed entries before removal (for logging)
+        flow_entries = hook_parser.get_flow_entries(event_name)
 
-        if not hooks:
-            print(f"No hooks found for event '{event_name}' with matcher '{matcher}'")
+        if not flow_entries:
+            print(f"No flow-managed hooks found for event '{event_name}'")
             return False
 
-        # Check each hook to see if it's a flow command
-        removed_any = False
-        for hook in hooks:
-            hook_command = hook.get("command", "")
+        # Remove flow-managed hooks
+        removed = hook_parser.remove_flow_hooks(event_name, matcher)
 
-            if _is_flow_command(hook_command):
-                # This is a flow command, safe to remove
-                success = hook_parser.remove_hook(
-                    event_name=event_name,
-                    matcher=matcher,
-                    command=hook_command
-                )
-
-                if success:
-                    removed_any = True
-                    print(f"✓ Removed flow hook: {hook_command}")
-            else:
-                print(f"Skipping non-flow hook: {hook_command}")
-
-        # Save if we removed anything
-        if removed_any:
+        if removed:
             hook_parser.save_hooks()
+            for entry in flow_entries:
+                flow_meta = entry.get("flow", {})
+                flow_name = flow_meta.get("name", "unnamed")
+                print(f"✓ Removed flow hook: {flow_name} (version {flow_meta.get('version', '?')})")
 
-        return removed_any
+        return removed
 
     except Exception as e:
         print(f"Error removing hook: {e}")
-        return False
-
-
-def _is_flow_command(command: str) -> bool:
-    """
-    Check if a command string is a flow CLI command.
-
-    Uses CLICommand to parse and validate the command.
-
-    Args:
-        command: The command string to check
-
-    Returns:
-        bool: True if it's a flow command, False otherwise
-    """
-    try:
-        # Check if command starts with "flow" or contains "flow_cli.py"
-        if command.strip().startswith("flow ") or "flow_cli.py" in command:
-            return True
-
-        # Try to parse as absolute path
-        if command.startswith("/"):
-            # Check if it ends with a flow-related script
-            if "flow_prompt_hook.py" in command or "flow" in command.split("/")[-1]:
-                return True
-
-        return False
-
-    except Exception:
         return False
