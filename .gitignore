@@ -23,3 +23,6 @@ venv/
 ENV/
 .idea/
 .vscode/
+
+# Environment variables with secrets
+.env.local

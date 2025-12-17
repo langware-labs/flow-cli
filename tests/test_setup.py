@@ -68,9 +68,9 @@ def test_ping_mock_claude():
     print(f"\n✓ Step 1: Server started on port {port}")
 
     try:
-        # Update config to point to our test server
-        from config_manager import set_config_value
-        set_config_value("local_cli_port", str(port))
+        # Set LOCAL_SERVER_PORT env var to point to our test server
+        import os
+        os.environ["LOCAL_SERVER_PORT"] = str(port)
 
         # Step 2: Use self_run_cli to send a ping
         test_message = "hello_from_test"

@@ -7,6 +7,7 @@ Receives user prompt via stdin and forwards to 'flow prompt' command.
 import json
 import sys
 import subprocess
+import os
 
 
 def main():
@@ -17,11 +18,12 @@ def main():
         # Extract the user's prompt
         user_prompt = input_data.get("prompt", "")
 
-        # Run the flow prompt command
+        # Run the flow prompt command (pass environment for LOCAL_SERVER_PORT etc.)
         result = subprocess.run(
             ["flow", "prompt", user_prompt],
             capture_output=True,
-            text=True
+            text=True,
+            env=os.environ.copy()
         )
 
         # Print any output from the flow command

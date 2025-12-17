@@ -1,7 +1,6 @@
 import pytest
 
 
-@pytest.mark.asyncio
 async def test_async_example():
     """Basic async test that passes."""
     result = await async_function()

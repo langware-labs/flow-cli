@@ -9,6 +9,7 @@ Claude Code supports three scopes for hooks configuration:
 """
 
 import os
+import sys
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -43,6 +44,24 @@ class CLIContext:
         self.working_dir = Path(working_dir) if working_dir else Path.cwd()
         self.user_home = Path.home()
         self.repo_root = self._find_repo_root()
+        self.api_config = self._init_api_config()
+
+    def _init_api_config(self):
+        """
+        Initialize API configuration from environment variables.
+
+        Returns:
+            ApiConfig instance
+        """
+        # Add py-sdk to path
+        sdk_path = os.path.join(Path(__file__).parent, 'py-sdk')
+        if sdk_path not in sys.path:
+            sys.path.insert(0, sdk_path)
+
+        from client import ApiConfig
+
+        # Create config from environment
+        return ApiConfig()
 
     def _find_repo_root(self) -> Optional[Path]:
         """

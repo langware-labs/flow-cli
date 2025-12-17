@@ -14,7 +14,6 @@ class ConfigKey(Enum):
     """Enumerated config keys with their default values."""
     FLOWPAD_API_SERVER_HOST = "localhost:8000"
     LOGIN_URL = "localhost:5173"
-    LOCAL_CLI_PORT = "9006"
     POST_LOGIN_TIMEOUT = "30"
 
 

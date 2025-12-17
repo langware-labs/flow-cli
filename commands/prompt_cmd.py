@@ -5,7 +5,8 @@ Called by Claude Code hook on UserPromptSubmit events.
 """
 
 from cli_command import CLICommand
-from config_manager import get_config_value, set_config_value
+from config_manager import get_config_value, set_config_value, setup_defaults
+import requests
 
 
 def onboard():
@@ -44,6 +45,15 @@ def handle_prompt(user_prompt):
     else:
         # Not first time - just a regular prompt
         # You can add tracking logic here if needed
+        pass
+
+    # Send prompt to local server for testing/tracking
+    try:
+        port = int(os.environ.get("LOCAL_SERVER_PORT", "9007"))
+        url = f"http://127.0.0.1:{port}/prompt"
+        requests.get(url, params={"prompt_text": user_prompt}, timeout=5)
+    except Exception:
+        # Silently fail if server is not available
         pass
 
     # Return empty string to not interfere with Claude's processing

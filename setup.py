@@ -5,14 +5,19 @@ setup(
     version="0.1.0",
     description="Flow CLI tool for flowpad",
     author="Langweare Labs",
-    packages=find_packages(),
-    py_modules=["flow_cli", "config_manager", "cli_context", "cli_command"],
+    packages=find_packages() + ["py-sdk"],
+    py_modules=["flow_cli", "config_manager", "cli_context", "cli_command", "env_loader", "auth", "app_config"],
     install_requires=[
         "platformdirs",
         "requests",
         "fastapi",
-        "uvicorn",
+        "uvicorn[standard]",
         "typer>=0.9.0",
+        "python-dotenv",
+        "keyring",
+        "fastmcp",
+        "httpx",
+        "websockets",
     ],
     extras_require={
         "dev": [
