@@ -173,7 +173,8 @@ def trace():
     """
     import time
 
-    from local_server.server import start_server, reporter_registry
+    from local_server.server import start_server
+    from local_server.state import reporter_registry
     from local_server.reporters import PrintReporter
 
     port = int(os.environ.get("LOCAL_SERVER_PORT", "9007"))
