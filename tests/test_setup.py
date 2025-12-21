@@ -25,7 +25,7 @@ def test_server():
     port = 9007  # Use different port to avoid conflicts
 
     # Clear any previous ping results
-    from local_server.server import ping_results
+    from local_server.state import ping_results
     ping_results.clear()
 
     # Start server in background thread
@@ -54,7 +54,7 @@ def test_ping_mock_claude():
     """
     # Step 1: Start the test server
     port = 9007
-    from local_server.server import ping_results
+    from local_server.state import ping_results
     ping_results.clear()
 
     server_thread = threading.Thread(

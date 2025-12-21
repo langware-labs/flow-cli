@@ -443,6 +443,7 @@ def hooks_set(
     from commands.setup_cmd.claude_code_setup.claude_hooks import setHook
     from commands.setup_cmd.claude_code_setup.setup_claude import _get_hook_script_path
     from commands.setup_cmd.claude_code_setup.flow_metadata import FlowHookMetadata
+    from commands.setup_cmd.claude_code_setup.hook_events import EVENTS_NO_MATCHER, EVENTS_WITH_MATCHER
 
     try:
         claude_scope = _parse_scope(scope)
@@ -467,25 +468,10 @@ def hooks_set(
         typer.echo("Run 'flow setup claude-code' first to create the hook script.", err=True)
         raise typer.Exit(1)
 
-    # All Claude Code hook events to configure
-    # Events without matchers
-    events_no_matcher = [
-        "UserPromptSubmit",
-        "Notification",
-        "Stop",
-        "SubagentStop",
-    ]
-
-    # Events with matchers (use "*" to match all tools)
-    events_with_matcher = [
-        "PreToolUse",
-        "PostToolUse",
-    ]
-
     success_count = 0
 
     # Set hooks for events without matchers
-    for event_name in events_no_matcher:
+    for event_name in EVENTS_NO_MATCHER:
         flow_metadata = FlowHookMetadata.create(name=event_name.lower())
         success = setHook(
             scope=claude_scope,
@@ -502,7 +488,7 @@ def hooks_set(
             typer.echo(f"✗ {event_name} (failed)", err=True)
 
     # Set hooks for events with matchers (match all tools)
-    for event_name in events_with_matcher:
+    for event_name in EVENTS_WITH_MATCHER:
         flow_metadata = FlowHookMetadata.create(name=event_name.lower())
         success = setHook(
             scope=claude_scope,
@@ -537,6 +523,7 @@ def hooks_clear(
       flow hooks clear --scope project
     """
     from commands.setup_cmd.claude_code_setup.claude_hooks import removeHook
+    from commands.setup_cmd.claude_code_setup.hook_events import ALL_HOOK_EVENTS
 
     try:
         claude_scope = _parse_scope(scope)
@@ -553,16 +540,21 @@ def hooks_clear(
 
     typer.echo(f"Clearing Flow hooks (scope: {scope})...")
 
-    # Remove the UserPromptSubmit hook (only if it's a flow command)
-    success = removeHook(
-        scope=claude_scope,
-        event_name="UserPromptSubmit",
-        matcher=None,
-        context=context
-    )
+    # Remove all flow-managed hooks
+    removed_count = 0
+    for event_name in ALL_HOOK_EVENTS:
+        success = removeHook(
+            scope=claude_scope,
+            event_name=event_name,
+            matcher=None,
+            context=context
+        )
+        if success:
+            typer.echo(f"✓ {event_name}")
+            removed_count += 1
 
-    if success:
-        typer.echo(f"✓ Flow hooks cleared from {context.get_claude_settings_path(claude_scope)}")
+    if removed_count > 0:
+        typer.echo(f"\n✓ {removed_count} hooks cleared from {context.get_claude_settings_path(claude_scope)}")
     else:
         typer.echo("No Flow hooks found to remove.")
 

@@ -52,7 +52,8 @@ def local_server(request):
     """
     import threading
     import requests
-    from local_server.server import start_server, ping_results, prompt_results
+    from local_server.server import start_server
+    from local_server.state import ping_results, prompt_results
 
     # Get port from request param if provided, otherwise use default
     port = getattr(request, 'param', {}).get('port', 9007) if hasattr(request, 'param') else 9007

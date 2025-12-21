@@ -20,9 +20,14 @@ import os
 
 def infer_hook_type(data: dict) -> str:
     """Infer the hook type from the input data fields."""
-    # Check for tool-related fields (PreToolUse/PostToolUse)
-    if "tool_name" in data:
-        if "tool_response" in data or "tool_result" in data:
+    # Claude Code provides hook_event_name directly
+    if "hook_event_name" in data:
+        return data["hook_event_name"]
+
+    # Fallback: Check for tool-related fields (PreToolUse/PostToolUse)
+    tool_name = data.get("tool_name") or data.get("toolName")
+    if tool_name:
+        if any(k in data for k in ["tool_response", "toolResponse", "tool_result", "toolResult", "output"]):
             return "PostToolUse"
         else:
             return "PreToolUse"
@@ -32,17 +37,17 @@ def infer_hook_type(data: dict) -> str:
         return "UserPromptSubmit"
 
     # Check for notification
-    if "message" in data and "type" not in data:
+    if "message" in data:
         return "Notification"
 
     # Check for stop events
-    if "stop_reason" in data or "reason" in data:
+    if any(k in data for k in ["stop_reason", "stopReason", "reason"]):
         if "subagent" in str(data).lower():
             return "SubagentStop"
         return "Stop"
 
-    # Default to unknown
-    return "Unknown"
+    # Include raw keys in Unknown for debugging
+    return f"Unknown({','.join(data.keys())})"
 
 
 def main():
